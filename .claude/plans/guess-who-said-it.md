@@ -18,7 +18,7 @@ Durable decisions that apply across all phases:
 - **Components**: shadcn/ui (Radix primitives, fully owned in-repo)
 - **Animation**: Framer Motion (Motion)
 - **Fonts**: Display — bold/playful game-show energy (chosen during scaffolding). Body — clean with character (chosen during scaffolding). Both from Google Fonts.
-- **Color palette**: Dark background base, vibrant primary (warm coral/orange or electric yellow), contrasting accent, 10 distinct player colors that pop on dark backgrounds.
+- **Color palette**: Dark-only theme (no light mode). Vibrant primary (warm coral/orange), contrasting accent, 10 distinct player colors that pop on dark backgrounds.
 - **Project structure**:
   ```
   src/
@@ -90,14 +90,14 @@ Initialize the Next.js project with App Router, TypeScript, Tailwind CSS, shadcn
 - [ ] Core TypeScript interfaces defined: `GameType`, `GameStore`, `SyncProvider`, `Game`, `Player`, `Round`, `GamePhase`
 - [ ] Tailwind config extended with custom color palette (CSS variables), font families, and player colors
 - [ ] Google Fonts loaded in layout with display and body font pairing
-- [ ] Dark theme base layout renders correctly
+- [ ] Dark-only theme layout renders correctly (no light theme — this is a game, not a dashboard)
 - [ ] Player avatar and color pools defined (10 of each)
 - [ ] Placeholder pages exist for all three routes (`/`, `/game/[code]`, `/play/[code]`)
 - [ ] API route stubs exist for all endpoints
 - [ ] `GameStore` in-memory implementation is functional (create/get/update game)
-- [ ] Vitest installed and configured, `npm run test` works
+- [ ] Vitest installed and configured, `bun run test` works
 - [ ] Test file structure established (colocated with modules)
-- [ ] Project runs locally with `npm run dev`
+- [ ] Project runs locally with `bun run dev`
 
 ---
 
