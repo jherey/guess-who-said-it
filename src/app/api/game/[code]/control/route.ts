@@ -9,7 +9,8 @@ type ControlAction =
   | "resume-timer"
   | "extend-timer"
   | "reveal"
-  | "next-round";
+  | "next-round"
+  | "play-again";
 
 /** POST /api/game/[code]/control — Host actions */
 export async function POST(
@@ -46,6 +47,9 @@ export async function POST(
         break;
       case "next-round":
         game = await controller.nextRound(code);
+        break;
+      case "play-again":
+        game = await controller.playAgain(code);
         break;
       default:
         return NextResponse.json(

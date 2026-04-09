@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { useGamePolling } from "@/lib/hooks/use-game-polling";
@@ -54,6 +55,10 @@ export function GameBoardClient({ code }: GameBoardClientProps) {
 
   if (gameView.phase === "REVEAL") {
     return <RevealBoard code={code} gameView={gameView} />;
+  }
+
+  if (gameView.phase === "SCOREBOARD") {
+    return <ScoreboardBoard code={code} gameView={gameView} />;
   }
 
   return (
@@ -358,7 +363,10 @@ function GuessingBoard({
         Round {round.index + 1} of {gameView.rounds.length}
       </p>
 
-      {/* Anonymous answer */}
+      {/* Prompt + Anonymous answer */}
+      <p className="text-sm text-muted-foreground text-center max-w-xl">
+        {gameView.promptText}
+      </p>
       <div className="flex flex-col items-center gap-3 max-w-2xl">
         <p className="text-sm text-muted-foreground uppercase tracking-wider">
           Who said this?
@@ -530,7 +538,12 @@ function RevealBoard({
 
       {/* Author reveal */}
       {author && (
-        <div className="flex flex-col items-center gap-3">
+        <motion.div
+          className="flex flex-col items-center gap-3"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}
+        >
           <p className="text-sm text-muted-foreground uppercase tracking-wider">
             Written by
           </p>
@@ -540,26 +553,31 @@ function RevealBoard({
               {author.name}
             </span>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Reactions stream */}
       {round.reactions.length > 0 && (
         <div className="flex flex-wrap justify-center gap-2">
-          {round.reactions.map((reaction, i) => {
-            const player = gameView.players.find(
-              (p) => p.id === reaction.playerId
-            );
-            return (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-card border border-border text-sm"
-              >
-                <span>{player?.avatar}</span>
-                <span>{reactionLabels[reaction.type] ?? reaction.type}</span>
-              </span>
-            );
-          })}
+          <AnimatePresence>
+            {round.reactions.map((reaction, i) => {
+              const player = gameView.players.find(
+                (p) => p.id === reaction.playerId
+              );
+              return (
+                <motion.span
+                  key={`${reaction.playerId}-${i}`}
+                  initial={{ scale: 0, opacity: 0, y: 10 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-card border border-border text-sm"
+                >
+                  <span>{player?.avatar}</span>
+                  <span>{reactionLabels[reaction.type] ?? reaction.type}</span>
+                </motion.span>
+              );
+            })}
+          </AnimatePresence>
         </div>
       )}
 
@@ -592,6 +610,110 @@ function RevealBoard({
         className="h-14 px-10 text-xl font-display font-bold"
       >
         {isLastRound ? "See Final Scores" : "Next Round"}
+      </Button>
+    </main>
+  );
+}
+
+function ScoreboardBoard({
+  code,
+  gameView,
+}: {
+  code: string;
+  gameView: GameView;
+}) {
+  const ranked = [...gameView.players].sort((a, b) => b.score - a.score);
+  const medals = ["🥇", "🥈", "🥉"];
+
+  async function handlePlayAgain() {
+    await fetch(`/api/game/${code}/control`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "play-again" }),
+    });
+  }
+
+  return (
+    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-10">
+      <motion.h1
+        className="font-display text-5xl font-bold text-primary"
+        initial={{ scale: 0.5, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 15 }}
+      >
+        Final Scores
+      </motion.h1>
+
+      {/* Leaderboard */}
+      <div className="flex flex-col gap-3 w-full max-w-md">
+        {ranked.map((player, i) => (
+          <motion.div
+            key={player.id}
+            initial={{ x: -50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.2 + i * 0.1, type: "spring", stiffness: 200, damping: 20 }}
+            className={`flex items-center gap-4 p-4 rounded-xl border ${
+              i === 0
+                ? "bg-primary/10 border-primary"
+                : "bg-card border-border"
+            }`}
+          >
+            <span className="text-2xl w-8 text-center">
+              {medals[i] ?? `${i + 1}.`}
+            </span>
+            <span className="text-3xl">{player.avatar}</span>
+            <span className="flex-1 font-display font-semibold text-lg">
+              {player.name}
+            </span>
+            <span className="font-display text-2xl font-bold text-primary">
+              {player.score}
+            </span>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Awards */}
+      {gameView.awards.length > 0 && (
+        <div className="flex flex-col items-center gap-4">
+          <h2 className="font-display text-2xl font-bold text-muted-foreground">
+            Awards
+          </h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            {gameView.awards.map((award, i) => {
+              const player = gameView.players.find(
+                (p) => p.id === award.playerId
+              );
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.5 + i * 0.15, type: "spring", stiffness: 200, damping: 20 }}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl bg-card border border-border min-w-[140px]"
+                >
+                  <span className="text-3xl">{player?.avatar}</span>
+                  <span className="font-display font-bold text-sm text-primary">
+                    {award.title}
+                  </span>
+                  <span className="text-xs text-muted-foreground text-center">
+                    {award.description}
+                  </span>
+                  <span className="text-xs font-medium">
+                    {award.playerName}
+                  </span>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Play Again */}
+      <Button
+        onClick={handlePlayAgain}
+        className="h-14 px-10 text-xl font-display font-bold"
+      >
+        Play Again
       </Button>
     </main>
   );

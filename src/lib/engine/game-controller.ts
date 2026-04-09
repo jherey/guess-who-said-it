@@ -224,6 +224,24 @@ export class GameController {
     });
   }
 
+  async playAgain(code: string): Promise<Game> {
+    const game = await this.store.get(code);
+    if (!game) throw new Error(`Game ${code} not found`);
+
+    const prompt = pickRandomPrompt();
+
+    return this.store.update(code, (g) => ({
+      ...g,
+      phase: "SUBMITTING" as const,
+      promptText: prompt.text,
+      answers: new Map(),
+      rounds: [],
+      currentRoundIndex: 0,
+      timer: null,
+      players: g.players.map((p) => ({ ...p, score: 0 })),
+    }));
+  }
+
   private async transitionToGuessing(code: string): Promise<Game> {
     return this.store.update(code, (g) => {
       const rounds = this.buildRoundsFromAnswers(g);

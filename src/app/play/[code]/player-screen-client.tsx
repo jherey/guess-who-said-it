@@ -136,6 +136,10 @@ function PlayerGameView({
     );
   }
 
+  if (gameView.phase === "SCOREBOARD") {
+    return <PlayerScoreboard gameView={gameView} playerId={playerId} />;
+  }
+
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-8">
       <p className="text-muted-foreground">Phase: {gameView.phase}</p>
@@ -427,7 +431,10 @@ function PlayerGuessing({
         </div>
       )}
 
-      {/* The anonymous answer */}
+      {/* Prompt + anonymous answer */}
+      <p className="text-xs text-muted-foreground text-center max-w-sm">
+        {gameView.promptText}
+      </p>
       <div className="flex flex-col items-center gap-2">
         <p className="text-sm text-muted-foreground uppercase tracking-wider">
           Who said this?
@@ -578,6 +585,91 @@ function PlayerReveal({
           <span className="font-display font-semibold">Score: {me.score}</span>
         </div>
       )}
+
+      <p className="text-sm text-muted-foreground animate-pulse">
+        Waiting for host...
+      </p>
+    </main>
+  );
+}
+
+function PlayerScoreboard({
+  gameView,
+  playerId,
+}: {
+  gameView: GameView;
+  playerId: string;
+}) {
+  const ranked = [...gameView.players].sort((a, b) => b.score - a.score);
+  const myRank = ranked.findIndex((p) => p.id === playerId) + 1;
+  const me = gameView.players.find((p) => p.id === playerId);
+  const myAwards = gameView.awards.filter((a) => a.playerId === playerId);
+  const medals = ["🥇", "🥈", "🥉"];
+
+  return (
+    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
+      <h1 className="font-display text-3xl font-bold text-primary">
+        Game Over!
+      </h1>
+
+      {/* Personal result */}
+      {me && (
+        <div className="flex flex-col items-center gap-2">
+          <span className="text-5xl">{me.avatar}</span>
+          <span className="font-display text-xl font-bold">{me.name}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{medals[myRank - 1] ?? ""}</span>
+            <span className="font-display text-lg text-muted-foreground">
+              #{myRank} of {ranked.length}
+            </span>
+            <span className="font-display text-2xl font-bold text-primary">
+              {me.score} pts
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Awards won */}
+      {myAwards.length > 0 && (
+        <div className="flex flex-col items-center gap-2">
+          {myAwards.map((award, i) => (
+            <div
+              key={i}
+              className="px-4 py-2 rounded-full bg-primary/10 border border-primary"
+            >
+              <span className="font-display font-bold text-primary text-sm">
+                {award.title}
+              </span>
+              <span className="text-xs text-muted-foreground ml-2">
+                {award.description}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Full leaderboard */}
+      <div className="flex flex-col gap-2 w-full max-w-xs">
+        {ranked.map((player, i) => (
+          <div
+            key={player.id}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
+              player.id === playerId
+                ? "bg-primary/10 border border-primary"
+                : "bg-card border border-border"
+            }`}
+          >
+            <span className="w-6 text-center text-sm">
+              {medals[i] ?? `${i + 1}.`}
+            </span>
+            <span className="text-xl">{player.avatar}</span>
+            <span className="flex-1 text-sm font-medium">{player.name}</span>
+            <span className="font-display font-bold text-primary">
+              {player.score}
+            </span>
+          </div>
+        ))}
+      </div>
 
       <p className="text-sm text-muted-foreground animate-pulse">
         Waiting for host...

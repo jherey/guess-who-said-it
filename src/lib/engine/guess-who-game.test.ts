@@ -52,4 +52,144 @@ describe("GuessWhoGame", () => {
     expect(view.code).toBe("ABCD");
     expect(view.currentRound).toBeNull();
   });
+
+  describe("calculateAwards", () => {
+    it("returns Most Mysterious for the player who fooled the most people", () => {
+      const game = createTestGame({
+        phase: "SCOREBOARD",
+        rounds: [
+          {
+            index: 0,
+            authorId: "p1",
+            answer: "Answer 1",
+            guesses: [
+              { playerId: "p2", guessedAuthorId: "p3" }, // wrong → p1 gets +1
+              { playerId: "p3", guessedAuthorId: "p2" }, // wrong → p1 gets +1
+            ],
+            reactions: [],
+            revealed: true,
+          },
+          {
+            index: 1,
+            authorId: "p2",
+            answer: "Answer 2",
+            guesses: [
+              { playerId: "p1", guessedAuthorId: "p2" }, // correct
+              { playerId: "p3", guessedAuthorId: "p1" }, // wrong → p2 gets +1
+            ],
+            reactions: [],
+            revealed: true,
+          },
+        ],
+      });
+
+      const awards = gameType.calculateAwards(game);
+      const mysterious = awards.find((a) => a.title === "Most Mysterious");
+      expect(mysterious).toBeDefined();
+      expect(mysterious!.playerId).toBe("p1"); // fooled 2 people
+    });
+
+    it("returns Detective for the player with the most correct guesses", () => {
+      const game = createTestGame({
+        phase: "SCOREBOARD",
+        rounds: [
+          {
+            index: 0,
+            authorId: "p1",
+            answer: "Answer 1",
+            guesses: [
+              { playerId: "p2", guessedAuthorId: "p1" }, // correct
+              { playerId: "p3", guessedAuthorId: "p2" }, // wrong
+            ],
+            reactions: [],
+            revealed: true,
+          },
+          {
+            index: 1,
+            authorId: "p2",
+            answer: "Answer 2",
+            guesses: [
+              { playerId: "p1", guessedAuthorId: "p3" }, // wrong
+              { playerId: "p3", guessedAuthorId: "p2" }, // correct
+            ],
+            reactions: [],
+            revealed: true,
+          },
+          {
+            index: 2,
+            authorId: "p3",
+            answer: "Answer 3",
+            guesses: [
+              { playerId: "p1", guessedAuthorId: "p3" }, // correct
+              { playerId: "p2", guessedAuthorId: "p3" }, // correct
+            ],
+            reactions: [],
+            revealed: true,
+          },
+        ],
+      });
+
+      const awards = gameType.calculateAwards(game);
+      const detective = awards.find((a) => a.title === "Detective");
+      expect(detective).toBeDefined();
+      // p2 got 2 correct (round 0 + round 2), p1 got 1, p3 got 1
+      expect(detective!.playerId).toBe("p2");
+    });
+
+    it("returns Social Butterfly for the player who received the most reactions", () => {
+      const game = createTestGame({
+        phase: "SCOREBOARD",
+        rounds: [
+          {
+            index: 0,
+            authorId: "p1",
+            answer: "Answer 1",
+            guesses: [],
+            reactions: [
+              { playerId: "p2", type: "no-way" },
+              { playerId: "p3", type: "legend" },
+            ],
+            revealed: true,
+          },
+          {
+            index: 1,
+            authorId: "p2",
+            answer: "Answer 2",
+            guesses: [],
+            reactions: [
+              { playerId: "p1", type: "knew-it" },
+            ],
+            revealed: true,
+          },
+        ],
+      });
+
+      const awards = gameType.calculateAwards(game);
+      const social = awards.find((a) => a.title === "Social Butterfly");
+      expect(social).toBeDefined();
+      expect(social!.playerId).toBe("p1"); // got 2 reactions on their answer
+    });
+
+    it("returns at least 3 awards for a completed game", () => {
+      const game = createTestGame({
+        phase: "SCOREBOARD",
+        rounds: [
+          {
+            index: 0,
+            authorId: "p1",
+            answer: "Answer 1",
+            guesses: [
+              { playerId: "p2", guessedAuthorId: "p1" },
+              { playerId: "p3", guessedAuthorId: "p2" },
+            ],
+            reactions: [{ playerId: "p2", type: "no-way" }],
+            revealed: true,
+          },
+        ],
+      });
+
+      const awards = gameType.calculateAwards(game);
+      expect(awards.length).toBeGreaterThanOrEqual(3);
+    });
+  });
 });

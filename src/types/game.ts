@@ -75,6 +75,8 @@ export interface GameView {
   totalPlayers: number;
   /** True if the requesting player is the author of the current round */
   isCurrentRoundAuthor: boolean;
+  /** Awards calculated at SCOREBOARD phase */
+  awards: { title: string; description: string; playerId: string; playerName: string }[];
 }
 
 export interface RoundView {

@@ -43,6 +43,9 @@ export class GuessWhoGame implements GameType {
       ? currentRound.authorId === playerId
       : false;
 
+    const awards =
+      game.phase === "SCOREBOARD" ? this.calculateAwards(game) : [];
+
     return {
       code: game.code,
       phase: game.phase,
@@ -54,12 +57,91 @@ export class GuessWhoGame implements GameType {
       submissionCount: game.answers.size,
       totalPlayers: game.players.length,
       isCurrentRoundAuthor,
+      awards,
     };
   }
 
-  calculateAwards(_game: Game): Award[] {
-    // Implemented in Phase 5
-    return [];
+  calculateAwards(game: Game): Award[] {
+    const awards: Award[] = [];
+    const playerMap = new Map(game.players.map((p) => [p.id, p]));
+
+    // Most Mysterious: author who fooled the most people across all rounds
+    const fooledCounts = new Map<string, number>();
+    // Detective: most correct guesses across all rounds
+    const correctCounts = new Map<string, number>();
+    // Social Butterfly: author whose answer got the most reactions
+    const reactionCounts = new Map<string, number>();
+
+    for (const round of game.rounds) {
+      for (const guess of round.guesses) {
+        if (guess.guessedAuthorId === round.authorId) {
+          correctCounts.set(
+            guess.playerId,
+            (correctCounts.get(guess.playerId) ?? 0) + 1
+          );
+        } else {
+          fooledCounts.set(
+            round.authorId,
+            (fooledCounts.get(round.authorId) ?? 0) + 1
+          );
+        }
+      }
+      reactionCounts.set(
+        round.authorId,
+        (reactionCounts.get(round.authorId) ?? 0) + round.reactions.length
+      );
+    }
+
+    const topFooled = this.topEntry(fooledCounts);
+    if (topFooled) {
+      const player = playerMap.get(topFooled[0]);
+      if (player) {
+        awards.push({
+          title: "Most Mysterious",
+          description: `Fooled others ${topFooled[1]} time${topFooled[1] !== 1 ? "s" : ""}`,
+          playerId: player.id,
+          playerName: player.name,
+        });
+      }
+    }
+
+    const topCorrect = this.topEntry(correctCounts);
+    if (topCorrect) {
+      const player = playerMap.get(topCorrect[0]);
+      if (player) {
+        awards.push({
+          title: "Detective",
+          description: `${topCorrect[1]} correct guess${topCorrect[1] !== 1 ? "es" : ""}`,
+          playerId: player.id,
+          playerName: player.name,
+        });
+      }
+    }
+
+    const topReactions = this.topEntry(reactionCounts);
+    if (topReactions && topReactions[1] > 0) {
+      const player = playerMap.get(topReactions[0]);
+      if (player) {
+        awards.push({
+          title: "Social Butterfly",
+          description: `Got ${topReactions[1]} reaction${topReactions[1] !== 1 ? "s" : ""} on their answers`,
+          playerId: player.id,
+          playerName: player.name,
+        });
+      }
+    }
+
+    return awards;
+  }
+
+  private topEntry(counts: Map<string, number>): [string, number] | null {
+    let top: [string, number] | null = null;
+    for (const [id, count] of counts) {
+      if (!top || count > top[1]) {
+        top = [id, count];
+      }
+    }
+    return top;
   }
 
   private buildRoundView(round: Round): RoundView {
