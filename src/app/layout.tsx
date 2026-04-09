@@ -17,6 +17,9 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Guess Who Said It",
   description: "A real-time multiplayer icebreaker game for team retros",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

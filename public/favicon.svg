@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Speech bubble -->
+  <rect x="2" y="2" width="28" height="22" rx="6" fill="#e8854a"/>
+  <!-- Bubble tail -->
+  <polygon points="8,24 14,24 10,30" fill="#e8854a"/>
+  <!-- Question mark -->
+  <text x="16" y="19" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="18" fill="#1a1520">?</text>
+</svg>
