@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { GameController } from "@/lib/engine";
 import { getGameStore } from "@/lib/store";
 
-type ControlAction = "start" | "advance-from-submitting";
+type ControlAction =
+  | "start"
+  | "advance-from-submitting"
+  | "pause-timer"
+  | "resume-timer"
+  | "extend-timer"
+  | "reveal";
 
 /** POST /api/game/[code]/control — Host actions */
 export async function POST(
@@ -11,7 +17,8 @@ export async function POST(
 ) {
   try {
     const { code } = await params;
-    const { action } = (await request.json()) as { action: ControlAction };
+    const body = await request.json();
+    const action = body.action as ControlAction;
 
     const store = getGameStore();
     const controller = new GameController(store);
@@ -23,6 +30,18 @@ export async function POST(
         break;
       case "advance-from-submitting":
         game = await controller.advanceFromSubmitting(code);
+        break;
+      case "pause-timer":
+        game = await controller.pauseTimer(code);
+        break;
+      case "resume-timer":
+        game = await controller.resumeTimer(code);
+        break;
+      case "extend-timer":
+        game = await controller.extendTimer(code, body.seconds ?? 10);
+        break;
+      case "reveal":
+        game = await controller.revealRound(code);
         break;
       default:
         return NextResponse.json(

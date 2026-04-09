@@ -115,4 +115,111 @@ describe("GameController", () => {
     // Should only have rounds for players who submitted
     expect(advanced.rounds).toHaveLength(1);
   });
+
+  describe("guessing", () => {
+    let guessingGame: Game;
+
+    beforeEach(async () => {
+      await controller.startGame(game.code);
+      const current = await store.get(game.code);
+      for (const player of current!.players) {
+        await controller.submitAnswer(
+          game.code,
+          player.id,
+          `Answer from ${player.name}`
+        );
+      }
+      guessingGame = (await store.get(game.code))!;
+    });
+
+    it("transitions to GUESSING with a timer", async () => {
+      expect(guessingGame.phase).toBe("GUESSING");
+      expect(guessingGame.timer).not.toBeNull();
+      expect(guessingGame.timer!.paused).toBe(false);
+    });
+
+    it("accepts a valid guess", async () => {
+      const round = guessingGame.rounds[0];
+      // Pick a player who is NOT the author to guess
+      const guesser = guessingGame.players.find(
+        (p) => p.id !== round.authorId
+      )!;
+      const guessedAuthor = guessingGame.players.find(
+        (p) => p.id !== guesser.id && p.id !== round.authorId
+      ) || guessingGame.players.find((p) => p.id === round.authorId)!;
+
+      const updated = await controller.submitGuess(
+        game.code,
+        guesser.id,
+        guessedAuthor.id
+      );
+
+      const updatedRound = updated.rounds[updated.currentRoundIndex];
+      expect(updatedRound.guesses).toHaveLength(1);
+      expect(updatedRound.guesses[0].playerId).toBe(guesser.id);
+    });
+
+    it("rejects self-guess (guessing yourself as the author)", async () => {
+      const round = guessingGame.rounds[0];
+      const notAuthor = guessingGame.players.find(
+        (p) => p.id !== round.authorId
+      )!;
+
+      await expect(
+        controller.submitGuess(game.code, notAuthor.id, notAuthor.id)
+      ).rejects.toThrow("cannot guess yourself");
+    });
+
+    it("rejects duplicate guess from same player", async () => {
+      const round = guessingGame.rounds[0];
+      const guesser = guessingGame.players.find(
+        (p) => p.id !== round.authorId
+      )!;
+      const target = guessingGame.players.find(
+        (p) => p.id !== guesser.id
+      )!;
+
+      await controller.submitGuess(game.code, guesser.id, target.id);
+      await expect(
+        controller.submitGuess(game.code, guesser.id, target.id)
+      ).rejects.toThrow("already guessed");
+    });
+
+    it("rejects guess when not in GUESSING phase", async () => {
+      // Transition away from guessing by going back to lobby (force)
+      await store.update(game.code, (g) => ({ ...g, phase: "LOBBY" as const }));
+      await expect(
+        controller.submitGuess(
+          game.code,
+          guessingGame.players[0].id,
+          guessingGame.players[1].id
+        )
+      ).rejects.toThrow("GUESSING");
+    });
+
+    it("the round author does not guess on their own round", async () => {
+      const round = guessingGame.rounds[0];
+
+      await expect(
+        controller.submitGuess(game.code, round.authorId, guessingGame.players[0].id)
+      ).rejects.toThrow("author cannot guess");
+    });
+
+    it("pauses the timer", async () => {
+      const updated = await controller.pauseTimer(game.code);
+      expect(updated.timer!.paused).toBe(true);
+    });
+
+    it("resumes the timer", async () => {
+      await controller.pauseTimer(game.code);
+      const updated = await controller.resumeTimer(game.code);
+      expect(updated.timer!.paused).toBe(false);
+    });
+
+    it("extends the timer", async () => {
+      const before = guessingGame.timer!;
+      const updated = await controller.extendTimer(game.code, 10);
+      expect(updated.timer!.endsAt).toBeGreaterThan(before.endsAt);
+    });
+  });
 });

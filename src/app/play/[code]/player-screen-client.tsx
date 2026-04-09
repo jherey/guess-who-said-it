@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGamePolling } from "@/lib/hooks/use-game-polling";
+import { useCountdown } from "@/lib/hooks/use-countdown";
 import type { GameView } from "@/types";
 
 interface PlayerScreenClientProps {
@@ -120,6 +121,12 @@ function PlayerGameView({
   if (gameView.phase === "SUBMITTING") {
     return (
       <PlayerSubmitting code={code} gameView={gameView} playerId={playerId} />
+    );
+  }
+
+  if (gameView.phase === "GUESSING") {
+    return (
+      <PlayerGuessing code={code} gameView={gameView} playerId={playerId} />
     );
   }
 
@@ -281,6 +288,144 @@ function PlayerSubmitting({
           <p className="text-sm text-destructive text-center">{error}</p>
         )}
       </div>
+    </main>
+  );
+}
+
+function PlayerGuessing({
+  code,
+  gameView,
+  playerId,
+}: {
+  code: string;
+  gameView: GameView;
+  playerId: string;
+}) {
+  const [guessed, setGuessed] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const { seconds, isExpired, isPaused } = useCountdown(gameView.timer);
+
+  const round = gameView.currentRound;
+  if (!round) return null;
+
+  // Check if this player already guessed (from polling data)
+  const alreadyGuessed =
+    guessed || round.guesses.some((g) => g.playerId === playerId);
+
+  // The round author doesn't guess — show a waiting screen
+  const isAuthor = round.authorId === playerId;
+  // During GUESSING, authorId is null in the view, so we can't check.
+  // But if the player tries to guess and gets "author cannot guess" error,
+  // we handle it. For now, show the grid to everyone.
+
+  // Players to pick from: everyone except yourself
+  const guessOptions = gameView.players.filter((p) => p.id !== playerId);
+
+  async function handleGuess() {
+    if (!selectedId) return;
+    setIsSubmitting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/game/${code}/guess`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId, guessedAuthorId: selectedId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setGuessed(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to guess";
+      if (msg.includes("already guessed") || msg.includes("author cannot guess")) {
+        setGuessed(true);
+      } else {
+        setError(msg);
+      }
+      setIsSubmitting(false);
+    }
+  }
+
+  if (alreadyGuessed) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+        <span className="text-5xl">✓</span>
+        <h2 className="font-display text-2xl font-bold text-primary">
+          Guess Locked In!
+        </h2>
+        <p className="text-muted-foreground text-sm">
+          Waiting for everyone else...
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {round.guessCount}/{gameView.players.length - 1} guessed
+        </p>
+      </main>
+    );
+  }
+
+  return (
+    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+      {/* Timer */}
+      <p
+        className={`font-mono text-4xl font-bold ${
+          isExpired
+            ? "text-destructive"
+            : seconds <= 5
+              ? "text-destructive animate-pulse"
+              : "text-primary"
+        }`}
+      >
+        {isPaused ? "⏸" : isExpired ? "0" : seconds}
+      </p>
+
+      {/* The anonymous answer */}
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-sm text-muted-foreground uppercase tracking-wider">
+          Who said this?
+        </p>
+        <blockquote className="font-display text-xl font-bold text-center leading-tight max-w-sm">
+          &ldquo;{round.answer}&rdquo;
+        </blockquote>
+      </div>
+
+      {/* Avatar grid */}
+      {!isExpired ? (
+        <>
+          <div className="grid grid-cols-3 gap-3 w-full max-w-sm">
+            {guessOptions.map((player) => (
+              <button
+                key={player.id}
+                onClick={() => setSelectedId(player.id)}
+                className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all ${
+                  selectedId === player.id
+                    ? "border-primary bg-primary/10 scale-105"
+                    : "border-border bg-card hover:border-muted-foreground"
+                }`}
+              >
+                <span className="text-3xl">{player.avatar}</span>
+                <span className="text-xs font-medium">{player.name}</span>
+              </button>
+            ))}
+          </div>
+
+          <Button
+            onClick={handleGuess}
+            disabled={!selectedId || isSubmitting}
+            className="h-12 w-full max-w-sm text-lg font-display font-semibold"
+          >
+            {isSubmitting ? "Submitting..." : "Lock In Guess"}
+          </Button>
+        </>
+      ) : (
+        <p className="text-muted-foreground text-sm">
+          Time&apos;s up! Waiting for reveal...
+        </p>
+      )}
+
+      {error && (
+        <p className="text-sm text-destructive text-center">{error}</p>
+      )}
     </main>
   );
 }

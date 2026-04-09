@@ -1,6 +1,7 @@
 import type { Game, Round } from "@/types";
 import type { GameStore } from "@/lib/store/game-store";
 import { GuessWhoGame } from "./guess-who-game";
+import { GameTimer } from "@/lib/timer";
 import { pickRandomPrompt } from "@/lib/prompts";
 
 const gameType = new GuessWhoGame();
@@ -48,7 +49,6 @@ export class GameController {
       return { ...g, answers: newAnswers };
     });
 
-    // Auto-transition if all players have submitted
     if (updated.answers.size >= updated.players.length) {
       return this.transitionToGuessing(code);
     }
@@ -69,21 +69,117 @@ export class GameController {
     return this.transitionToGuessing(code);
   }
 
+  async submitGuess(
+    code: string,
+    playerId: string,
+    guessedAuthorId: string
+  ): Promise<Game> {
+    const game = await this.store.get(code);
+    if (!game) throw new Error(`Game ${code} not found`);
+    if (game.phase !== "GUESSING") {
+      throw new Error("Guesses can only be submitted during GUESSING phase");
+    }
+
+    const round = game.rounds[game.currentRoundIndex];
+    if (!round) throw new Error("No active round");
+
+    if (playerId === round.authorId) {
+      throw new Error("Round author cannot guess on their own round");
+    }
+    if (playerId === guessedAuthorId) {
+      throw new Error("Player cannot guess yourself as the author");
+    }
+    if (round.guesses.some((g) => g.playerId === playerId)) {
+      throw new Error("Player has already guessed this round");
+    }
+
+    // Reject if timer has expired
+    if (game.timer && GameTimer.isExpired(game.timer, Date.now())) {
+      throw new Error("Timer has expired, no more guesses accepted");
+    }
+
+    return this.store.update(code, (g) => {
+      const rounds = [...g.rounds];
+      const currentRound = { ...rounds[g.currentRoundIndex] };
+      currentRound.guesses = [
+        ...currentRound.guesses,
+        { playerId, guessedAuthorId },
+      ];
+      rounds[g.currentRoundIndex] = currentRound;
+      return { ...g, rounds };
+    });
+  }
+
+  async pauseTimer(code: string): Promise<Game> {
+    const game = await this.store.get(code);
+    if (!game) throw new Error(`Game ${code} not found`);
+    if (!game.timer) throw new Error("No timer to pause");
+
+    return this.store.update(code, (g) => ({
+      ...g,
+      timer: GameTimer.pause(g.timer!, Date.now()),
+    }));
+  }
+
+  async resumeTimer(code: string): Promise<Game> {
+    const game = await this.store.get(code);
+    if (!game) throw new Error(`Game ${code} not found`);
+    if (!game.timer) throw new Error("No timer to resume");
+
+    return this.store.update(code, (g) => ({
+      ...g,
+      timer: GameTimer.resume(g.timer!, Date.now()),
+    }));
+  }
+
+  async extendTimer(code: string, extraSeconds: number): Promise<Game> {
+    const game = await this.store.get(code);
+    if (!game) throw new Error(`Game ${code} not found`);
+    if (!game.timer) throw new Error("No timer to extend");
+
+    return this.store.update(code, (g) => ({
+      ...g,
+      timer: GameTimer.extend(g.timer!, extraSeconds, Date.now()),
+    }));
+  }
+
+  async revealRound(code: string): Promise<Game> {
+    const game = await this.store.get(code);
+    if (!game) throw new Error(`Game ${code} not found`);
+    if (game.phase !== "GUESSING") {
+      throw new Error("Can only reveal during GUESSING phase");
+    }
+
+    return this.store.update(code, (g) => {
+      const rounds = [...g.rounds];
+      const currentRound = { ...rounds[g.currentRoundIndex] };
+      currentRound.revealed = true;
+      rounds[g.currentRoundIndex] = currentRound;
+      return {
+        ...g,
+        phase: "REVEAL" as const,
+        rounds,
+        timer: null,
+      };
+    });
+  }
+
   private async transitionToGuessing(code: string): Promise<Game> {
     return this.store.update(code, (g) => {
       const rounds = this.buildRoundsFromAnswers(g);
+      const timer = GameTimer.start(g.config.guessTimerSeconds, Date.now());
       return {
         ...g,
         phase: "GUESSING" as const,
         rounds,
         currentRoundIndex: 0,
+        timer,
       };
     });
   }
 
   private buildRoundsFromAnswers(game: Game): Round[] {
     const entries = Array.from(game.answers.entries());
-    // Shuffle the entries so the order doesn't reveal who submitted when
     for (let i = entries.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [entries[i], entries[j]] = [entries[j], entries[i]];

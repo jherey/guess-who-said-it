@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { useGamePolling } from "@/lib/hooks/use-game-polling";
+import { useCountdown } from "@/lib/hooks/use-countdown";
 import type { GameView } from "@/types";
 
 interface GameBoardClientProps {
@@ -45,6 +46,10 @@ export function GameBoardClient({ code }: GameBoardClientProps) {
 
   if (gameView.phase === "SUBMITTING") {
     return <SubmittingBoard code={code} gameView={gameView} playerId={playerId} />;
+  }
+
+  if (gameView.phase === "GUESSING") {
+    return <GuessingBoard code={code} gameView={gameView} />;
   }
 
   return (
@@ -287,6 +292,117 @@ function SubmittingBoard({
           {isAdvancing ? "Advancing..." : "Skip Waiting & Start Guessing"}
         </Button>
       )}
+    </main>
+  );
+}
+
+function GuessingBoard({
+  code,
+  gameView,
+}: {
+  code: string;
+  gameView: GameView;
+}) {
+  const { seconds, isExpired, isPaused } = useCountdown(gameView.timer);
+
+  const round = gameView.currentRound;
+  if (!round) return null;
+
+  // Count eligible guessers (everyone except the author)
+  const eligibleGuessers = gameView.players.length - 1;
+
+  async function sendControl(action: string, extra?: Record<string, unknown>) {
+    await fetch(`/api/game/${code}/control`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...extra }),
+    });
+  }
+
+  return (
+    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
+      <p className="text-sm text-muted-foreground uppercase tracking-wider">
+        Round {round.index + 1} of {gameView.rounds.length}
+      </p>
+
+      {/* Anonymous answer */}
+      <div className="flex flex-col items-center gap-4 max-w-2xl">
+        <p className="text-sm text-muted-foreground uppercase tracking-wider">
+          Who said this?
+        </p>
+        <blockquote className="font-display text-4xl font-bold text-center leading-tight">
+          &ldquo;{round.answer}&rdquo;
+        </blockquote>
+      </div>
+
+      {/* Countdown timer */}
+      <div className="flex flex-col items-center gap-2">
+        <p
+          className={`font-mono text-7xl font-bold ${
+            isExpired
+              ? "text-destructive"
+              : seconds <= 5
+                ? "text-destructive animate-pulse"
+                : "text-primary"
+          }`}
+        >
+          {isPaused ? "⏸" : isExpired ? "0" : seconds}
+        </p>
+        {isPaused && (
+          <p className="text-sm text-muted-foreground">Timer paused</p>
+        )}
+        {isExpired && (
+          <p className="text-sm text-muted-foreground">Time&apos;s up!</p>
+        )}
+      </div>
+
+      {/* Guess count */}
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-sm text-muted-foreground uppercase tracking-wider">
+          Guesses
+        </p>
+        <p className="font-display text-3xl font-bold text-primary">
+          {round.guessCount}
+          <span className="text-xl text-muted-foreground">
+            /{eligibleGuessers}
+          </span>
+        </p>
+      </div>
+
+      {/* Host controls */}
+      <div className="flex flex-wrap justify-center gap-3">
+        {!isPaused && !isExpired && (
+          <Button
+            variant="secondary"
+            onClick={() => sendControl("pause-timer")}
+            className="font-display"
+          >
+            Pause
+          </Button>
+        )}
+        {isPaused && (
+          <Button
+            variant="secondary"
+            onClick={() => sendControl("resume-timer")}
+            className="font-display"
+          >
+            Resume
+          </Button>
+        )}
+        <Button
+          variant="secondary"
+          onClick={() => sendControl("extend-timer", { seconds: 10 })}
+          className="font-display"
+        >
+          +10s
+        </Button>
+        <Button
+          onClick={() => sendControl("reveal")}
+          className="font-display font-bold"
+        >
+          Reveal
+        </Button>
+      </div>
     </main>
   );
 }
