@@ -222,4 +222,103 @@ describe("GameController", () => {
       expect(updated.timer!.endsAt).toBeGreaterThan(before.endsAt);
     });
   });
+
+  describe("reveal and scoring", () => {
+    beforeEach(async () => {
+      // Set up a game in GUESSING phase with known guesses
+      await controller.startGame(game.code);
+      const current = (await store.get(game.code))!;
+      for (const player of current.players) {
+        await controller.submitAnswer(
+          game.code,
+          player.id,
+          `Answer from ${player.name}`
+        );
+      }
+    });
+
+    it("reveal applies scores: +1 correct guess, +1 to author per fooled player", async () => {
+      const beforeReveal = (await store.get(game.code))!;
+      const round = beforeReveal.rounds[0];
+      const nonAuthors = beforeReveal.players.filter(
+        (p) => p.id !== round.authorId
+      );
+
+      // First player guesses correctly, second guesses wrong
+      await controller.submitGuess(
+        game.code,
+        nonAuthors[0].id,
+        round.authorId
+      );
+      const wrongTarget = beforeReveal.players.find(
+        (p) => p.id !== round.authorId && p.id !== nonAuthors[1].id
+      )!;
+      await controller.submitGuess(
+        game.code,
+        nonAuthors[1].id,
+        wrongTarget.id
+      );
+
+      const revealed = await controller.revealRound(game.code);
+      expect(revealed.phase).toBe("REVEAL");
+
+      // Correct guesser gets +1
+      const correctGuesser = revealed.players.find(
+        (p) => p.id === nonAuthors[0].id
+      )!;
+      expect(correctGuesser.score).toBe(1);
+
+      // Author gets +1 for fooling the wrong guesser
+      const author = revealed.players.find(
+        (p) => p.id === round.authorId
+      )!;
+      expect(author.score).toBe(1);
+    });
+
+    it("nextRound advances to next answer's GUESSING phase", async () => {
+      await controller.revealRound(game.code);
+      const next = await controller.nextRound(game.code);
+
+      expect(next.phase).toBe("GUESSING");
+      expect(next.currentRoundIndex).toBe(1);
+      expect(next.timer).not.toBeNull();
+    });
+
+    it("nextRound transitions to SCOREBOARD after the last round", async () => {
+      const g = (await store.get(game.code))!;
+      // Reveal and advance through all rounds
+      for (let i = 0; i < g.rounds.length; i++) {
+        await controller.revealRound(game.code);
+        if (i < g.rounds.length - 1) {
+          await controller.nextRound(game.code);
+        }
+      }
+
+      const final = await controller.nextRound(game.code);
+      expect(final.phase).toBe("SCOREBOARD");
+    });
+
+    it("submitReaction adds a reaction to the current round", async () => {
+      await controller.revealRound(game.code);
+      const g = (await store.get(game.code))!;
+      const playerId = g.players[0].id;
+
+      const updated = await controller.submitReaction(
+        game.code,
+        playerId,
+        "no-way"
+      );
+      const round = updated.rounds[updated.currentRoundIndex];
+      expect(round.reactions).toHaveLength(1);
+      expect(round.reactions[0].playerId).toBe(playerId);
+      expect(round.reactions[0].type).toBe("no-way");
+    });
+
+    it("rejects reaction when not in REVEAL phase", async () => {
+      // Still in GUESSING phase
+      await expect(
+        controller.submitReaction(game.code, game.players[0].id, "knew-it")
+      ).rejects.toThrow("REVEAL");
+    });
+  });
 });

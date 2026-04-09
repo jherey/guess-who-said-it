@@ -1,4 +1,4 @@
-import type { Game, Round } from "@/types";
+import type { Game, ReactionType, Round } from "@/types";
 import type { GameStore } from "@/lib/store/game-store";
 import { GuessWhoGame } from "./guess-who-game";
 import { GameTimer } from "@/lib/timer";
@@ -150,17 +150,77 @@ export class GameController {
       throw new Error("Can only reveal during GUESSING phase");
     }
 
+    // Calculate scores for this round
+    const roundScores = gameType.calculateScores(game, game.currentRoundIndex);
+
     return this.store.update(code, (g) => {
       const rounds = [...g.rounds];
       const currentRound = { ...rounds[g.currentRoundIndex] };
       currentRound.revealed = true;
       rounds[g.currentRoundIndex] = currentRound;
+
+      // Apply scores to players
+      const players = g.players.map((p) => ({
+        ...p,
+        score: p.score + (roundScores.get(p.id) ?? 0),
+      }));
+
       return {
         ...g,
         phase: "REVEAL" as const,
         rounds,
+        players,
         timer: null,
       };
+    });
+  }
+
+  async nextRound(code: string): Promise<Game> {
+    const game = await this.store.get(code);
+    if (!game) throw new Error(`Game ${code} not found`);
+    if (game.phase !== "REVEAL") {
+      throw new Error("Can only advance from REVEAL phase");
+    }
+
+    const nextIndex = game.currentRoundIndex + 1;
+    const isLastRound = nextIndex >= game.rounds.length;
+
+    if (isLastRound) {
+      return this.store.update(code, (g) => ({
+        ...g,
+        phase: "SCOREBOARD" as const,
+        timer: null,
+      }));
+    }
+
+    return this.store.update(code, (g) => ({
+      ...g,
+      phase: "GUESSING" as const,
+      currentRoundIndex: nextIndex,
+      timer: GameTimer.start(g.config.guessTimerSeconds, Date.now()),
+    }));
+  }
+
+  async submitReaction(
+    code: string,
+    playerId: string,
+    type: ReactionType
+  ): Promise<Game> {
+    const game = await this.store.get(code);
+    if (!game) throw new Error(`Game ${code} not found`);
+    if (game.phase !== "REVEAL") {
+      throw new Error("Reactions can only be sent during REVEAL phase");
+    }
+
+    return this.store.update(code, (g) => {
+      const rounds = [...g.rounds];
+      const currentRound = { ...rounds[g.currentRoundIndex] };
+      currentRound.reactions = [
+        ...currentRound.reactions,
+        { playerId, type },
+      ];
+      rounds[g.currentRoundIndex] = currentRound;
+      return { ...g, rounds };
     });
   }
 

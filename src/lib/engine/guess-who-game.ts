@@ -37,8 +37,11 @@ export class GuessWhoGame implements GameType {
     return scores;
   }
 
-  buildGameView(game: Game, _playerId: string): GameView {
+  buildGameView(game: Game, playerId: string): GameView {
     const currentRound = game.rounds[game.currentRoundIndex] ?? null;
+    const isCurrentRoundAuthor = currentRound
+      ? currentRound.authorId === playerId
+      : false;
 
     return {
       code: game.code,
@@ -50,6 +53,7 @@ export class GuessWhoGame implements GameType {
       timer: game.timer,
       submissionCount: game.answers.size,
       totalPlayers: game.players.length,
+      isCurrentRoundAuthor,
     };
   }
 

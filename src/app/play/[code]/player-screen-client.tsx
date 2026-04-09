@@ -130,6 +130,12 @@ function PlayerGameView({
     );
   }
 
+  if (gameView.phase === "REVEAL") {
+    return (
+      <PlayerReveal code={code} gameView={gameView} playerId={playerId} />
+    );
+  }
+
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-8">
       <p className="text-muted-foreground">Phase: {gameView.phase}</p>
@@ -310,17 +316,10 @@ function PlayerGuessing({
   const round = gameView.currentRound;
   if (!round) return null;
 
-  // Check if this player already guessed (from polling data)
   const alreadyGuessed =
     guessed || round.guesses.some((g) => g.playerId === playerId);
 
-  // The round author doesn't guess — show a waiting screen
-  const isAuthor = round.authorId === playerId;
-  // During GUESSING, authorId is null in the view, so we can't check.
-  // But if the player tries to guess and gets "author cannot guess" error,
-  // we handle it. For now, show the grid to everyone.
-
-  // Players to pick from: everyone except yourself
+  const isAuthor = gameView.isCurrentRoundAuthor;
   const guessOptions = gameView.players.filter((p) => p.id !== playerId);
 
   async function handleGuess() {
@@ -347,9 +346,50 @@ function PlayerGuessing({
     }
   }
 
+  const me = gameView.players.find((p) => p.id === playerId);
+
+  if (isAuthor) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+        {me && (
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{me.avatar}</span>
+            <span className="font-display font-semibold">{me.name}</span>
+          </div>
+        )}
+        <p
+          className={`font-mono text-4xl font-bold ${
+            isExpired
+              ? "text-destructive"
+              : seconds <= 5
+                ? "text-destructive animate-pulse"
+                : "text-primary"
+          }`}
+        >
+          {isPaused ? "⏸" : isExpired ? "0" : seconds}
+        </p>
+        <blockquote className="font-display text-xl font-bold text-center max-w-sm leading-tight">
+          &ldquo;{round.answer}&rdquo;
+        </blockquote>
+        <p className="text-sm text-muted-foreground italic">
+          This is your answer — watch them guess!
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {round.guessCount}/{gameView.players.length - 1} guessed
+        </p>
+      </main>
+    );
+  }
+
   if (alreadyGuessed) {
     return (
       <main className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+        {me && (
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{me.avatar}</span>
+            <span className="font-display font-semibold">{me.name}</span>
+          </div>
+        )}
         <span className="text-5xl">✓</span>
         <h2 className="font-display text-2xl font-bold text-primary">
           Guess Locked In!
@@ -379,6 +419,14 @@ function PlayerGuessing({
         {isPaused ? "⏸" : isExpired ? "0" : seconds}
       </p>
 
+      {/* Player identity */}
+      {me && (
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">{me.avatar}</span>
+          <span className="font-display font-semibold">{me.name}</span>
+        </div>
+      )}
+
       {/* The anonymous answer */}
       <div className="flex flex-col items-center gap-2">
         <p className="text-sm text-muted-foreground uppercase tracking-wider">
@@ -392,19 +440,29 @@ function PlayerGuessing({
       {/* Avatar grid */}
       {!isExpired ? (
         <>
-          <div className="grid grid-cols-3 gap-3 w-full max-w-sm">
+          <div
+            className={`grid gap-3 w-full ${
+              guessOptions.length <= 2
+                ? "grid-cols-2 max-w-xs mx-auto"
+                : guessOptions.length <= 4
+                  ? "grid-cols-2 max-w-sm mx-auto"
+                  : guessOptions.length <= 6
+                    ? "grid-cols-3 max-w-sm mx-auto"
+                    : "grid-cols-3 max-w-md mx-auto"
+            }`}
+          >
             {guessOptions.map((player) => (
               <button
                 key={player.id}
                 onClick={() => setSelectedId(player.id)}
-                className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all ${
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
                   selectedId === player.id
                     ? "border-primary bg-primary/10 scale-105"
                     : "border-border bg-card hover:border-muted-foreground"
                 }`}
               >
                 <span className="text-3xl">{player.avatar}</span>
-                <span className="text-xs font-medium">{player.name}</span>
+                <span className="text-sm font-medium">{player.name}</span>
               </button>
             ))}
           </div>
@@ -426,6 +484,104 @@ function PlayerGuessing({
       {error && (
         <p className="text-sm text-destructive text-center">{error}</p>
       )}
+    </main>
+  );
+}
+
+function PlayerReveal({
+  code,
+  gameView,
+  playerId,
+}: {
+  code: string;
+  gameView: GameView;
+  playerId: string;
+}) {
+  const [reacted, setReacted] = useState(false);
+  const round = gameView.currentRound;
+  if (!round) return null;
+
+  const author = gameView.players.find((p) => p.id === round.authorId);
+  const me = gameView.players.find((p) => p.id === playerId);
+  const myGuess = round.guesses.find((g) => g.playerId === playerId);
+  const guessedCorrectly = myGuess?.guessedAuthorId === round.authorId;
+
+  const reactions: { type: "knew-it" | "no-way" | "legend"; label: string }[] = [
+    { type: "knew-it", label: "Knew it!" },
+    { type: "no-way", label: "No way!" },
+    { type: "legend", label: "Legend" },
+  ];
+
+  async function handleReaction(type: string) {
+    setReacted(true);
+    try {
+      await fetch(`/api/game/${code}/react`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId, type }),
+      });
+    } catch {
+      // Reaction is best-effort
+    }
+  }
+
+  return (
+    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+      {/* Answer + Author */}
+      <blockquote className="font-display text-xl font-bold text-center max-w-sm leading-tight">
+        &ldquo;{round.answer}&rdquo;
+      </blockquote>
+
+      {author && (
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-sm text-muted-foreground">Written by</p>
+          <div className="flex flex-col items-center gap-1 p-4 rounded-xl bg-card border-2 border-primary">
+            <span className="text-5xl">{author.avatar}</span>
+            <span className="font-display text-lg font-bold">{author.name}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Your guess result */}
+      {myGuess && (
+        <p
+          className={`font-display font-semibold ${
+            guessedCorrectly ? "text-primary" : "text-muted-foreground"
+          }`}
+        >
+          {guessedCorrectly ? "You guessed right! +1" : "You got fooled!"}
+        </p>
+      )}
+
+      {/* Reaction buttons */}
+      {!reacted ? (
+        <div className="flex gap-3">
+          {reactions.map((r) => (
+            <Button
+              key={r.type}
+              variant="secondary"
+              onClick={() => handleReaction(r.type)}
+              className="font-display text-lg px-5 py-3"
+            >
+              {r.label}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">Reaction sent!</p>
+      )}
+
+      {/* Your score */}
+      {me && (
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">{me.avatar}</span>
+          <span className="font-display font-semibold">Score: {me.score}</span>
+        </div>
+      )}
+
+      <p className="text-sm text-muted-foreground animate-pulse">
+        Waiting for host...
+      </p>
     </main>
   );
 }

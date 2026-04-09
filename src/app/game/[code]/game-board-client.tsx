@@ -49,7 +49,11 @@ export function GameBoardClient({ code }: GameBoardClientProps) {
   }
 
   if (gameView.phase === "GUESSING") {
-    return <GuessingBoard code={code} gameView={gameView} />;
+    return <GuessingBoard code={code} gameView={gameView} playerId={playerId} />;
+  }
+
+  if (gameView.phase === "REVEAL") {
+    return <RevealBoard code={code} gameView={gameView} />;
   }
 
   return (
@@ -299,17 +303,25 @@ function SubmittingBoard({
 function GuessingBoard({
   code,
   gameView,
+  playerId,
 }: {
   code: string;
   gameView: GameView;
+  playerId: string;
 }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [guessed, setGuessed] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { seconds, isExpired, isPaused } = useCountdown(gameView.timer);
 
   const round = gameView.currentRound;
   if (!round) return null;
 
-  // Count eligible guessers (everyone except the author)
+  const isAuthor = gameView.isCurrentRoundAuthor;
+  const alreadyGuessed =
+    guessed || round.guesses.some((g) => g.playerId === playerId);
   const eligibleGuessers = gameView.players.length - 1;
+  const guessOptions = gameView.players.filter((p) => p.id !== playerId);
 
   async function sendControl(action: string, extra?: Record<string, unknown>) {
     await fetch(`/api/game/${code}/control`, {
@@ -319,14 +331,35 @@ function GuessingBoard({
     });
   }
 
+  async function handleGuess() {
+    if (!selectedId) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/game/${code}/guess`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerId, guessedAuthorId: selectedId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setGuessed(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("already guessed") || msg.includes("author cannot guess")) {
+        setGuessed(true);
+      }
+      setIsSubmitting(false);
+    }
+  }
+
   return (
-    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
+    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
       <p className="text-sm text-muted-foreground uppercase tracking-wider">
         Round {round.index + 1} of {gameView.rounds.length}
       </p>
 
       {/* Anonymous answer */}
-      <div className="flex flex-col items-center gap-4 max-w-2xl">
+      <div className="flex flex-col items-center gap-3 max-w-2xl">
         <p className="text-sm text-muted-foreground uppercase tracking-wider">
           Who said this?
         </p>
@@ -336,9 +369,9 @@ function GuessingBoard({
       </div>
 
       {/* Countdown timer */}
-      <div className="flex flex-col items-center gap-2">
+      <div className="flex flex-col items-center gap-1">
         <p
-          className={`font-mono text-7xl font-bold ${
+          className={`font-mono text-6xl font-bold ${
             isExpired
               ? "text-destructive"
               : seconds <= 5
@@ -355,6 +388,54 @@ function GuessingBoard({
           <p className="text-sm text-muted-foreground">Time&apos;s up!</p>
         )}
       </div>
+
+      {/* Host's own guess (if not the author) */}
+      {isAuthor ? (
+        <p className="text-sm text-muted-foreground italic">
+          This is your answer — sit back and watch them guess!
+        </p>
+      ) : alreadyGuessed ? (
+        <p className="text-primary font-display font-semibold">
+          ✓ Your guess is locked in!
+        </p>
+      ) : !isExpired ? (
+        <div className="flex flex-col items-center gap-3 w-full max-w-lg">
+          <p className="text-sm text-muted-foreground">Your guess (as host)</p>
+          <div
+            className={`grid gap-3 w-full ${
+              guessOptions.length <= 2
+                ? "grid-cols-2 max-w-xs mx-auto"
+                : guessOptions.length <= 4
+                  ? "grid-cols-2 max-w-sm mx-auto"
+                  : guessOptions.length <= 6
+                    ? "grid-cols-3"
+                    : "grid-cols-4"
+            }`}
+          >
+            {guessOptions.map((player) => (
+              <button
+                key={player.id}
+                onClick={() => setSelectedId(player.id)}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all ${
+                  selectedId === player.id
+                    ? "border-primary bg-primary/10 scale-105"
+                    : "border-border bg-card hover:border-muted-foreground"
+                }`}
+              >
+                <span className="text-3xl">{player.avatar}</span>
+                <span className="text-sm font-medium">{player.name}</span>
+              </button>
+            ))}
+          </div>
+          <Button
+            onClick={handleGuess}
+            disabled={!selectedId || isSubmitting}
+            className="h-10 w-full max-w-xs font-display font-semibold"
+          >
+            {isSubmitting ? "Locking..." : "Lock In Guess"}
+          </Button>
+        </div>
+      ) : null}
 
       {/* Guess count */}
       <div className="flex flex-col items-center gap-1">
@@ -403,6 +484,115 @@ function GuessingBoard({
           Reveal
         </Button>
       </div>
+    </main>
+  );
+}
+
+function RevealBoard({
+  code,
+  gameView,
+}: {
+  code: string;
+  gameView: GameView;
+}) {
+  const round = gameView.currentRound;
+  if (!round) return null;
+
+  const author = gameView.players.find((p) => p.id === round.authorId);
+  const isLastRound =
+    round.index >= gameView.rounds.length - 1;
+
+  async function sendControl(action: string) {
+    await fetch(`/api/game/${code}/control`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+  }
+
+  // Reaction labels for display
+  const reactionLabels: Record<string, string> = {
+    "knew-it": "Knew it!",
+    "no-way": "No way!",
+    "legend": "Legend",
+  };
+
+  return (
+    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
+      <p className="text-sm text-muted-foreground uppercase tracking-wider">
+        Round {round.index + 1} of {gameView.rounds.length}
+      </p>
+
+      {/* The answer */}
+      <blockquote className="font-display text-3xl font-bold text-center leading-tight max-w-2xl">
+        &ldquo;{round.answer}&rdquo;
+      </blockquote>
+
+      {/* Author reveal */}
+      {author && (
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-sm text-muted-foreground uppercase tracking-wider">
+            Written by
+          </p>
+          <div className="flex flex-col items-center gap-2 p-6 rounded-2xl bg-card border-2 border-primary">
+            <span className="text-6xl">{author.avatar}</span>
+            <span className="font-display text-2xl font-bold">
+              {author.name}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Reactions stream */}
+      {round.reactions.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-2">
+          {round.reactions.map((reaction, i) => {
+            const player = gameView.players.find(
+              (p) => p.id === reaction.playerId
+            );
+            return (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-card border border-border text-sm"
+              >
+                <span>{player?.avatar}</span>
+                <span>{reactionLabels[reaction.type] ?? reaction.type}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Scores */}
+      <div className="flex flex-col items-center gap-3">
+        <p className="text-sm text-muted-foreground uppercase tracking-wider">
+          Scores
+        </p>
+        <div className="flex flex-wrap justify-center gap-3">
+          {[...gameView.players]
+            .sort((a, b) => b.score - a.score)
+            .map((player) => (
+              <div
+                key={player.id}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border"
+              >
+                <span className="text-xl">{player.avatar}</span>
+                <span className="text-sm font-medium">{player.name}</span>
+                <span className="font-display font-bold text-primary">
+                  {player.score}
+                </span>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* Host control: Next Round or Scoreboard */}
+      <Button
+        onClick={() => sendControl("next-round")}
+        className="h-14 px-10 text-xl font-display font-bold"
+      >
+        {isLastRound ? "See Final Scores" : "Next Round"}
+      </Button>
     </main>
   );
 }

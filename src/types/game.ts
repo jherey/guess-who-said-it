@@ -73,6 +73,8 @@ export interface GameView {
   timer: TimerState | null;
   submissionCount: number;
   totalPlayers: number;
+  /** True if the requesting player is the author of the current round */
+  isCurrentRoundAuthor: boolean;
 }
 
 export interface RoundView {

@@ -87,7 +87,6 @@ export default function Home() {
             className="h-12 text-center text-lg font-mono tracking-widest"
           />
           <Button
-            variant="secondary"
             onClick={handleJoin}
             disabled={joinCode.length < 4}
             className="h-12 px-6 font-display font-semibold"
