@@ -45,7 +45,7 @@ export interface Game {
   phase: GamePhase;
   players: Player[];
   promptText: string;
-  answers: Map<string, string>; // playerId -> answer text
+  answers: Record<string, string>; // playerId -> answer text
   rounds: Round[];
   currentRoundIndex: number;
   config: GameConfig;

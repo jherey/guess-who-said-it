@@ -24,7 +24,7 @@ export async function POST(
 
     return NextResponse.json({
       phase: game.phase,
-      submissionCount: game.answers.size,
+      submissionCount: Object.keys(game.answers).length,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

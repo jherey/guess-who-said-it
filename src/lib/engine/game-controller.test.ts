@@ -48,8 +48,8 @@ describe("GameController", () => {
         "My secret talent is juggling"
       );
 
-      expect(updated.answers.size).toBe(1);
-      expect(updated.answers.get(playerIds[0])).toBe(
+      expect(Object.keys(updated.answers).length).toBe(1);
+      expect(updated.answers[playerIds[0]]).toBe(
         "My secret talent is juggling"
       );
     });

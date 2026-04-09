@@ -42,14 +42,21 @@ export class InMemoryGameStore implements GameStore {
 
 /**
  * Singleton store instance.
- * In Next.js, module-level state persists across API route invocations
- * within the same server process.
+ * Uses Vercel KV when KV_REST_API_URL is set (production on Vercel),
+ * falls back to in-memory for local development.
  */
-let storeInstance: InMemoryGameStore | null = null;
+let storeInstance: GameStore | null = null;
 
 export function getGameStore(): GameStore {
-  if (!storeInstance) {
+  if (storeInstance) return storeInstance;
+
+  if (process.env.KV_REST_API_URL) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { VercelKVGameStore } = require("./vercel-kv-store");
+    storeInstance = new VercelKVGameStore() as GameStore;
+  } else {
     storeInstance = new InMemoryGameStore();
   }
+
   return storeInstance;
 }

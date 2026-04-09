@@ -14,7 +14,7 @@ export class RoomManager {
       phase: "LOBBY",
       players: [host],
       promptText: "",
-      answers: new Map(),
+      answers: {},
       rounds: [],
       currentRoundIndex: 0,
       config: { maxPlayers: 10, guessTimerSeconds: 20 },

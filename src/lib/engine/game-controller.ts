@@ -22,7 +22,7 @@ export class GameController {
       ...g,
       phase: "SUBMITTING" as const,
       promptText: prompt.text,
-      answers: new Map(),
+      answers: {},
     }));
   }
 
@@ -39,17 +39,16 @@ export class GameController {
     if (!game.players.some((p) => p.id === playerId)) {
       throw new Error(`${playerId} is not a player in this game`);
     }
-    if (game.answers.has(playerId)) {
+    if (playerId in game.answers) {
       throw new Error("Player has already submitted an answer");
     }
 
-    const updated = await this.store.update(code, (g) => {
-      const newAnswers = new Map(g.answers);
-      newAnswers.set(playerId, answer);
-      return { ...g, answers: newAnswers };
-    });
+    const updated = await this.store.update(code, (g) => ({
+      ...g,
+      answers: { ...g.answers, [playerId]: answer },
+    }));
 
-    if (updated.answers.size >= updated.players.length) {
+    if (Object.keys(updated.answers).length >= updated.players.length) {
       return this.transitionToGuessing(code);
     }
 
@@ -62,7 +61,7 @@ export class GameController {
     if (game.phase !== "SUBMITTING") {
       throw new Error("Can only advance from SUBMITTING phase");
     }
-    if (game.answers.size === 0) {
+    if (Object.keys(game.answers).length === 0) {
       throw new Error("At least one answer is required");
     }
 
@@ -234,7 +233,7 @@ export class GameController {
       ...g,
       phase: "SUBMITTING" as const,
       promptText: prompt.text,
-      answers: new Map(),
+      answers: {},
       rounds: [],
       currentRoundIndex: 0,
       timer: null,
@@ -257,7 +256,7 @@ export class GameController {
   }
 
   private buildRoundsFromAnswers(game: Game): Round[] {
-    const entries = Array.from(game.answers.entries());
+    const entries = Object.entries(game.answers);
     for (let i = entries.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [entries[i], entries[j]] = [entries[j], entries[i]];

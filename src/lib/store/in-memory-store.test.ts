@@ -8,7 +8,7 @@ function createTestGame(overrides: Partial<Game> = {}): Game {
     phase: "LOBBY",
     players: [],
     promptText: "",
-    answers: new Map(),
+    answers: {},
     rounds: [],
     currentRoundIndex: 0,
     config: { maxPlayers: 10, guessTimerSeconds: 20 },

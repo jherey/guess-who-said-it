@@ -54,7 +54,7 @@ export class GuessWhoGame implements GameType {
       currentRound: currentRound ? this.buildRoundView(currentRound) : null,
       rounds: game.rounds.map((r) => this.buildRoundView(r)),
       timer: game.timer,
-      submissionCount: game.answers.size,
+      submissionCount: Object.keys(game.answers).length,
       totalPlayers: game.players.length,
       isCurrentRoundAuthor,
       awards,

@@ -12,7 +12,7 @@ function createTestGame(overrides: Partial<Game> = {}): Game {
       { id: "p3", name: "Carol", avatar: "🦄", color: "var(--color-player-3)", score: 0, isHost: false },
     ],
     promptText: "",
-    answers: new Map(),
+    answers: {},
     rounds: [],
     currentRoundIndex: 0,
     config: { maxPlayers: 10, guessTimerSeconds: 20 },

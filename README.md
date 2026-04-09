@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Guess Who Said It
+
+A real-time multiplayer icebreaker game for team retrospectives. Everyone answers a fun prompt anonymously, then the team guesses who wrote each answer.
+
+## How It Works
+
+1. **Create & Join** - The host creates a game room. Players join via a 4-digit code or QR code on their phones.
+2. **Answer the Prompt** - A fun question appears. Everyone types their answer anonymously.
+3. **Guess Who** - Answers are revealed one at a time. Guess which teammate wrote each one before time runs out.
+4. **Score & React** - +1 for a correct guess. +1 to the author for every person they fooled. React with "Knew it!", "No way!", or "Legend".
+5. **Celebrate** - Final leaderboard with awards: Most Mysterious, Detective, Social Butterfly.
+
+## Tech Stack
+
+- **Framework**: Next.js (App Router)
+- **Language**: TypeScript (strict mode)
+- **Styling**: Tailwind CSS + shadcn/ui
+- **Animation**: Framer Motion
+- **Testing**: Vitest (50 tests)
+- **Runtime**: Bun
+- **Deployment**: Vercel
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Install dependencies
+bun install
+
+# Start dev server
+bun run dev
+
+# Run tests
+bun run test
+
+# Build for production
+bun run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to play.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+  app/                          # Next.js pages + API routes
+    page.tsx                    # Landing page (create/join game)
+    game/[code]/                # Game board (host projected screen)
+    play/[code]/                # Player screen (phone)
+    api/game/                   # REST API endpoints
+  components/ui/                # shadcn/ui components
+  lib/
+    engine/                     # Game engine, controller, room manager
+    store/                      # GameStore interface + in-memory impl
+    hooks/                      # useGamePolling, useCountdown
+    prompts/                    # 50 curated workplace-safe prompts
+    timer/                      # Server-authoritative countdown timer
+  types/                        # TypeScript interfaces
+```
 
-## Learn More
+## Architecture
 
-To learn more about Next.js, take a look at the following resources:
+The app is built as an extensible game platform. Key abstractions:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **GameType** - Interface each game mode implements (phases, scoring, awards). "Guess Who Said It" is the first; Hot Takes, Two Truths and a Lie, etc. can be added by implementing the same interface.
+- **GameStore** - Interface for state persistence. Currently in-memory; swappable to Redis/DB without changing game logic.
+- **SyncProvider** - Interface for client-server communication. Currently polling (1.5s); swappable to WebSocket via Fastify without changing game logic.
+- **GameTimer** - Pure functions with injected time for testability. Server-authoritative; clients display a synced countdown.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Game Features
 
-## Deploy on Vercel
+- 4-10 players
+- Host is also a player (can submit answers and guess)
+- Room code + QR code for easy joining
+- 20-second countdown timer with pause, resume, and extend controls
+- Real-time polling updates (~1.5s)
+- Reactions after each reveal
+- Awards: Most Mysterious, Detective, Social Butterfly
+- Play Again with a new prompt
+- Dark theme with game-show energy
+- Mobile-first responsive design
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deploy to Vercel:
+
+```bash
+vercel
+```
+
+Important: Game state is stored in-memory on the server. Vercel serverless functions are stateless, so each API route invocation may hit a different instance. For a retro with a small team this works fine on a single serverless function, but for production use consider adding Redis or a database backend via the GameStore interface.
+
+## Future Plans
+
+- WebSocket real-time via Fastify backend on Hetzner
+- Additional game modes (Hot Takes, Two Truths and a Lie, This or That)
+- Custom host prompts
+- Persistent game history
+- User accounts
