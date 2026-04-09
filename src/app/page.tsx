@@ -99,6 +99,52 @@ export default function Home() {
           <p className="text-sm text-destructive text-center">{error}</p>
         )}
       </div>
+
+      {/* How to Play */}
+      <div className="w-full max-w-lg">
+        <h2 className="font-display text-2xl font-bold text-center mb-6">
+          How to Play
+        </h2>
+        <div className="flex flex-col gap-4">
+          {[
+            {
+              step: "1",
+              title: "Create & Join",
+              desc: "The host creates a game and shares the room code or QR. Everyone joins on their phone.",
+            },
+            {
+              step: "2",
+              title: "Answer the Prompt",
+              desc: "A fun question appears. Everyone types their answer anonymously.",
+            },
+            {
+              step: "3",
+              title: "Guess Who",
+              desc: "Answers are revealed one at a time. Guess which teammate wrote each one before time runs out!",
+            },
+            {
+              step: "4",
+              title: "Score & React",
+              desc: "+1 for a correct guess. +1 to the author for every person they fooled. React with \"Knew it!\", \"No way!\", or \"Legend\".",
+            },
+            {
+              step: "5",
+              title: "Celebrate",
+              desc: "See the final leaderboard and fun awards like Most Mysterious and Detective.",
+            },
+          ].map((item) => (
+            <div key={item.step} className="flex gap-4 items-start">
+              <span className="font-display text-2xl font-bold text-primary w-8 shrink-0 text-center">
+                {item.step}
+              </span>
+              <div>
+                <p className="font-display font-semibold">{item.title}</p>
+                <p className="text-sm text-muted-foreground">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </main>
   );
 }
