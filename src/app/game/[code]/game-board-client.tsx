@@ -58,7 +58,7 @@ export function GameBoardClient({ code }: GameBoardClientProps) {
   }
 
   if (gameView.phase === "SCOREBOARD") {
-    return <ScoreboardBoard code={code} gameView={gameView} />;
+    return <ScoreboardBoard code={code} gameView={gameView} playerId={playerId} />;
   }
 
   return (
@@ -634,9 +634,11 @@ function RevealBoard({
 function ScoreboardBoard({
   code,
   gameView,
+  playerId,
 }: {
   code: string;
   gameView: GameView;
+  playerId: string;
 }) {
   const ranked = [...gameView.players].sort((a, b) => b.score - a.score);
   const medals = ["🥇", "🥈", "🥉"];
@@ -670,9 +672,11 @@ function ScoreboardBoard({
             whileHover={{ scale: 1.04, y: -2 }}
             transition={{ delay: 0.2 + i * 0.1, type: "spring", stiffness: 200, damping: 20 }}
             className={`flex items-center gap-4 p-4 rounded-xl border cursor-default ${
-              i === 0
+              player.id === playerId
                 ? "bg-primary/10 border-primary"
-                : "bg-card border-border"
+                : i === 0
+                  ? "bg-primary/5 border-primary/50"
+                  : "bg-card border-border"
             }`}
           >
             <span className="text-2xl w-8 text-center">
