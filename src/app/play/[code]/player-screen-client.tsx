@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGamePolling } from "@/lib/hooks/use-game-polling";
@@ -534,56 +535,87 @@ function PlayerReveal({
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
-      {/* Answer + Author */}
-      <blockquote className="font-display text-xl font-bold text-center max-w-sm leading-tight">
+      {/* Answer */}
+      <motion.blockquote
+        className="font-display text-xl font-bold text-center max-w-sm leading-tight"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
         &ldquo;{round.answer}&rdquo;
-      </blockquote>
+      </motion.blockquote>
 
+      {/* Author reveal */}
       {author && (
-        <div className="flex flex-col items-center gap-2">
+        <motion.div
+          className="flex flex-col items-center gap-2"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.3 }}
+        >
           <p className="text-sm text-muted-foreground">Written by</p>
           <div className="flex flex-col items-center gap-1 p-4 rounded-xl bg-card border-2 border-primary">
             <span className="text-5xl">{author.avatar}</span>
             <span className="font-display text-lg font-bold">{author.name}</span>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Your guess result */}
       {myGuess && (
-        <p
-          className={`font-display font-semibold ${
+        <motion.p
+          className={`font-display font-semibold text-lg ${
             guessedCorrectly ? "text-primary" : "text-muted-foreground"
           }`}
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.6, type: "spring", stiffness: 300, damping: 20 }}
         >
           {guessedCorrectly ? "You guessed right! +1" : "You got fooled!"}
-        </p>
+        </motion.p>
       )}
 
       {/* Reaction buttons */}
       {!reacted ? (
         <div className="flex gap-3">
-          {reactions.map((r) => (
-            <Button
+          {reactions.map((r, i) => (
+            <motion.div
               key={r.type}
-              variant="secondary"
-              onClick={() => handleReaction(r.type)}
-              className="font-display text-lg px-5 py-3"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.8 + i * 0.1, type: "spring", stiffness: 300, damping: 20 }}
             >
-              {r.label}
-            </Button>
+              <Button
+                variant="secondary"
+                onClick={() => handleReaction(r.type)}
+                className="font-display text-lg px-5 py-3"
+              >
+                {r.label}
+              </Button>
+            </motion.div>
           ))}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">Reaction sent!</p>
+        <motion.p
+          className="text-sm text-muted-foreground"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          Reaction sent!
+        </motion.p>
       )}
 
       {/* Your score */}
       {me && (
-        <div className="flex items-center gap-2">
+        <motion.div
+          className="flex items-center gap-2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+        >
           <span className="text-2xl">{me.avatar}</span>
           <span className="font-display font-semibold">Score: {me.score}</span>
-        </div>
+        </motion.div>
       )}
 
       <p className="text-sm text-muted-foreground animate-pulse">
@@ -651,9 +683,13 @@ function PlayerScoreboard({
       {/* Full leaderboard */}
       <div className="flex flex-col gap-2 w-full max-w-xs">
         {ranked.map((player, i) => (
-          <div
+          <motion.div
             key={player.id}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
+            initial={{ x: -30, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            whileHover={{ scale: 1.04, y: -2 }}
+            transition={{ delay: 0.1 + i * 0.08, type: "spring", stiffness: 200, damping: 20 }}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-default ${
               player.id === playerId
                 ? "bg-primary/10 border border-primary"
                 : "bg-card border border-border"
@@ -667,7 +703,7 @@ function PlayerScoreboard({
             <span className="font-display font-bold text-primary">
               {player.score}
             </span>
-          </div>
+          </motion.div>
         ))}
       </div>
 

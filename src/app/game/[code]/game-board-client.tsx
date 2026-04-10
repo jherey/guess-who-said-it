@@ -532,9 +532,14 @@ function RevealBoard({
       </p>
 
       {/* The answer */}
-      <blockquote className="font-display text-3xl font-bold text-center leading-tight max-w-2xl">
+      <motion.blockquote
+        className="font-display text-3xl font-bold text-center leading-tight max-w-2xl"
+        initial={{ opacity: 0, y: -15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
         &ldquo;{round.answer}&rdquo;
-      </blockquote>
+      </motion.blockquote>
 
       {/* Author reveal */}
       {author && (
@@ -567,10 +572,10 @@ function RevealBoard({
               return (
                 <motion.span
                   key={`${reaction.playerId}-${i}`}
-                  initial={{ scale: 0, opacity: 0, y: 10 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-card border border-border text-sm"
+                  initial={{ scale: 0, opacity: 0, y: 20, rotate: -10 }}
+                  animate={{ scale: 1, opacity: 1, y: 0, rotate: 0 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-card border border-border text-sm font-medium"
                 >
                   <span>{player?.avatar}</span>
                   <span>{reactionLabels[reaction.type] ?? reaction.type}</span>
@@ -582,7 +587,12 @@ function RevealBoard({
       )}
 
       {/* Scores */}
-      <div className="flex flex-col items-center gap-3">
+      <motion.div
+        className="flex flex-col items-center gap-3"
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5, duration: 0.4 }}
+      >
         <p className="text-sm text-muted-foreground uppercase tracking-wider">
           Scores
         </p>
@@ -602,15 +612,21 @@ function RevealBoard({
               </div>
             ))}
         </div>
-      </div>
+      </motion.div>
 
       {/* Host control: Next Round or Scoreboard */}
-      <Button
-        onClick={() => sendControl("next-round")}
-        className="h-14 px-10 text-xl font-display font-bold"
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.7 }}
       >
-        {isLastRound ? "See Final Scores" : "Next Round"}
-      </Button>
+        <Button
+          onClick={() => sendControl("next-round")}
+          className="h-14 px-10 text-xl font-display font-bold"
+        >
+          {isLastRound ? "See Final Scores" : "Next Round"}
+        </Button>
+      </motion.div>
     </main>
   );
 }
@@ -651,8 +667,9 @@ function ScoreboardBoard({
             key={player.id}
             initial={{ x: -50, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
+            whileHover={{ scale: 1.04, y: -2 }}
             transition={{ delay: 0.2 + i * 0.1, type: "spring", stiffness: 200, damping: 20 }}
-            className={`flex items-center gap-4 p-4 rounded-xl border ${
+            className={`flex items-center gap-4 p-4 rounded-xl border cursor-default ${
               i === 0
                 ? "bg-primary/10 border-primary"
                 : "bg-card border-border"
