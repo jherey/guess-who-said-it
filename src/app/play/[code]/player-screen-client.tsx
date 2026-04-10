@@ -671,6 +671,39 @@ function PlayerScoreboard({
         ))}
       </div>
 
+      {/* All awards */}
+      {gameView.awards.length > 0 && (
+        <div className="flex flex-col items-center gap-3 w-full max-w-xs">
+          <h2 className="font-display text-lg font-bold text-muted-foreground">
+            Awards
+          </h2>
+          <div className="flex flex-wrap justify-center gap-2">
+            {gameView.awards.map((award, i) => {
+              const player = gameView.players.find(
+                (p) => p.id === award.playerId
+              );
+              return (
+                <div
+                  key={i}
+                  className="flex flex-col items-center gap-1 p-3 rounded-xl bg-card border border-border min-w-[110px]"
+                >
+                  <span className="text-2xl">{player?.avatar}</span>
+                  <span className="font-display font-bold text-xs text-primary">
+                    {award.title}
+                  </span>
+                  <span className="text-xs text-muted-foreground text-center">
+                    {award.description}
+                  </span>
+                  <span className="text-xs font-medium">
+                    {award.playerName}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <p className="text-sm text-muted-foreground animate-pulse">
         Waiting for host...
       </p>
