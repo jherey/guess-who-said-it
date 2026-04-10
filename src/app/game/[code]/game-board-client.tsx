@@ -154,7 +154,7 @@ function LobbyBoard({
         </div>
       </div>
 
-      {gameView.players.length >= 2 && (
+      {gameView.players.length >= 3 && (
         <Button
           onClick={handleStart}
           disabled={isStarting}
@@ -163,9 +163,9 @@ function LobbyBoard({
           {isStarting ? "Starting..." : "Start Game"}
         </Button>
       )}
-      {gameView.players.length < 2 && (
+      {gameView.players.length < 3 && (
         <p className="text-sm text-muted-foreground">
-          Need at least 2 players to start
+          Need at least 3 players to start
         </p>
       )}
     </main>
