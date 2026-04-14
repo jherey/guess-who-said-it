@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GameController } from "@/lib/engine";
+import { GameController } from "@/lib/platform";
 import { getGameStore } from "@/lib/store";
+import { GAMES } from "@/lib/games/registry";
 
 type ControlAction =
   | "start"
@@ -8,7 +9,6 @@ type ControlAction =
   | "pause-timer"
   | "resume-timer"
   | "extend-timer"
-  | "reveal"
   | "next-round"
   | "play-again";
 
@@ -23,7 +23,7 @@ export async function POST(
     const action = body.action as ControlAction;
 
     const store = getGameStore();
-    const controller = new GameController(store);
+    const controller = new GameController(store, GAMES);
 
     let game;
     switch (action) {
@@ -41,9 +41,6 @@ export async function POST(
         break;
       case "extend-timer":
         game = await controller.extendTimer(code, body.seconds ?? 10);
-        break;
-      case "reveal":
-        game = await controller.revealRound(code);
         break;
       case "next-round":
         game = await controller.nextRound(code);

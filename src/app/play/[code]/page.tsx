@@ -1,10 +1,10 @@
-import { PlayerScreenClient } from "./player-screen-client";
+import { PlayerDispatcher } from "./player-dispatcher";
 
-interface PlayerScreenProps {
+interface PageProps {
   params: Promise<{ code: string }>;
 }
 
-export default async function PlayerScreen({ params }: PlayerScreenProps) {
+export default async function PlayPage({ params }: PageProps) {
   const { code } = await params;
-  return <PlayerScreenClient code={code} />;
+  return <PlayerDispatcher code={code} />;
 }

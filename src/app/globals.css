@@ -47,7 +47,18 @@
   --color-player-10: oklch(0.76 0.14 290);   /* Lavender */
 }
 
-/* Dark-first — this is a game, not a dashboard */
+/*
+ * Platform default theme (dark + warm coral).
+ *
+ * The following CSS variables are the public theming contract that games
+ * may override via a [data-game="<key>"] selector in their own theme.css:
+ *
+ *   --background, --foreground, --card, --card-foreground,
+ *   --primary, --primary-foreground, --accent, --accent-foreground,
+ *   --border, --ring, --font-display, --font-body
+ *
+ * Games that declare no overrides inherit this default.
+ */
 :root {
   --background: oklch(0.13 0.015 270);
   --foreground: oklch(0.95 0.01 80);
@@ -70,6 +81,158 @@
   --radius: 0.75rem;
 }
 
+/*
+ * Parley homepage palette — distinct from any in-game theme.
+ *
+ * Uses explicit CSS classes rather than --background overrides because
+ * Tailwind v4's @theme inline freezes utility colors at build time, making
+ * scoped variable overrides ineffective for `bg-background` etc.
+ *
+ * Palette: warm cream paper, ink type, deep forest green as the only accent.
+ * No coral — that color belongs to Guess Who, not to the platform itself.
+ */
+.parley-home {
+  background-color: oklch(0.96 0.012 85);
+  color: oklch(0.22 0.02 270);
+}
+.parley-home .parley-card {
+  background-color: oklch(0.99 0.006 85);
+  border-color: oklch(0.87 0.015 85);
+}
+.parley-home .parley-border { border-color: oklch(0.87 0.015 85); }
+.parley-home .parley-muted { color: oklch(0.48 0.02 270); }
+.parley-home .parley-faint { color: oklch(0.62 0.02 270); }
+.parley-home .parley-accent { color: oklch(0.44 0.13 50); }
+.parley-home .parley-accent-bg {
+  background-color: oklch(0.44 0.13 50);
+  color: oklch(0.96 0.012 85);
+}
+.parley-home .parley-accent-border { border-color: oklch(0.44 0.13 50); }
+
+/*
+ * Hero section — toggleable light/dark via data-theme attribute.
+ * Light: warm cream, deep amber accent, soft-shadow cards.
+ * Dark: deep twilight, bright gold accent, frosted-glass cards.
+ */
+.parley-hero {
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+.parley-hero .hero-accent,
+.parley-hero .hero-accent-bg,
+.parley-hero .hero-muted,
+.parley-hero .hero-glass,
+.parley-hero .hero-card-label,
+.parley-hero .hero-card-text,
+.parley-hero .hero-secondary-btn {
+  transition: color 0.4s ease, background-color 0.4s ease,
+    border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+/* ── Light theme ─────────────────────────────────────────── */
+.parley-hero[data-theme="light"] {
+  background-color: oklch(0.97 0.01 85);
+  color: oklch(0.22 0.02 270);
+}
+.parley-hero[data-theme="light"] .hero-accent {
+  color: oklch(0.50 0.16 50);
+}
+.parley-hero[data-theme="light"] .hero-accent-bg {
+  background-color: oklch(0.50 0.16 50);
+  color: oklch(0.98 0.005 85);
+}
+.parley-hero[data-theme="light"] .hero-muted {
+  color: oklch(0.50 0.02 270);
+}
+.parley-hero[data-theme="light"] .hero-glass {
+  background-color: oklch(0.99 0.005 85 / 0.85);
+  border: 1px solid oklch(0.85 0.015 85);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px oklch(0 0 0 / 0.06), 0 1px 4px oklch(0 0 0 / 0.04);
+}
+.parley-hero[data-theme="light"] .hero-card-label {
+  color: oklch(0.50 0.02 270);
+}
+.parley-hero[data-theme="light"] .hero-card-text {
+  color: oklch(0.30 0.02 270);
+}
+.parley-hero[data-theme="light"] .hero-glow-warm {
+  background-color: oklch(0.80 0.10 75 / 0.10);
+}
+.parley-hero[data-theme="light"] .hero-glow-cool {
+  background-color: oklch(0.70 0.10 280 / 0.07);
+}
+.parley-hero[data-theme="light"] .hero-secondary-btn {
+  border-color: oklch(0.22 0.02 270 / 0.18);
+}
+.parley-hero[data-theme="light"] .hero-secondary-btn:hover {
+  background-color: oklch(0.22 0.02 270 / 0.05);
+}
+
+/* ── Dark theme ──────────────────────────────────────────── */
+.parley-hero[data-theme="dark"] {
+  background-color: oklch(0.11 0.025 275);
+  color: oklch(0.95 0.008 85);
+}
+.parley-hero[data-theme="dark"] .hero-accent {
+  color: oklch(0.80 0.15 75);
+}
+.parley-hero[data-theme="dark"] .hero-accent-bg {
+  background-color: oklch(0.80 0.15 75);
+  color: oklch(0.13 0.02 75);
+}
+.parley-hero[data-theme="dark"] .hero-muted {
+  color: oklch(0.60 0.02 270);
+}
+.parley-hero[data-theme="dark"] .hero-glass {
+  background-color: oklch(0.18 0.02 275 / 0.55);
+  border: 1px solid oklch(0.35 0.02 275 / 0.3);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px oklch(0 0 0 / 0.2);
+}
+.parley-hero[data-theme="dark"] .hero-card-label {
+  color: oklch(0.95 0.008 85 / 0.25);
+}
+.parley-hero[data-theme="dark"] .hero-card-text {
+  color: oklch(0.95 0.008 85 / 0.60);
+}
+.parley-hero[data-theme="dark"] .hero-glow-warm {
+  background-color: oklch(0.80 0.12 75 / 0.04);
+}
+.parley-hero[data-theme="dark"] .hero-glow-cool {
+  background-color: oklch(0.60 0.12 280 / 0.04);
+}
+.parley-hero[data-theme="dark"] .hero-secondary-btn {
+  border-color: oklch(0.95 0.008 85 / 0.15);
+}
+.parley-hero[data-theme="dark"] .hero-secondary-btn:hover {
+  background-color: oklch(0.95 0.008 85 / 0.05);
+}
+.parley-home .parley-input {
+  background-color: oklch(0.99 0.006 85);
+  border-color: oklch(0.82 0.018 85);
+  color: oklch(0.22 0.02 270);
+}
+.parley-home .parley-input::placeholder {
+  color: oklch(0.70 0.018 85);
+}
+.parley-home .parley-input:focus {
+  border-color: oklch(0.44 0.13 50);
+  outline: 2px solid oklch(0.44 0.13 50 / 0.25);
+}
+
+/* Catalog dark section — harmonized with hero dark palette. */
+.parley-dark {
+  background-color: oklch(0.14 0.02 275);
+  color: oklch(0.96 0.012 85);
+}
+.parley-dark .parley-dark-card {
+  background-color: oklch(0.18 0.02 275);
+  border-color: oklch(0.26 0.02 275);
+}
+.parley-dark .parley-dark-border { border-color: oklch(0.26 0.02 275); }
+.parley-dark .parley-dark-muted { color: oklch(0.65 0.02 270); }
+.parley-dark .parley-dark-faint { color: oklch(0.50 0.02 270); }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -79,5 +242,13 @@
   }
   html {
     @apply font-sans;
+  }
+
+  /* Respect users who prefer reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    [data-animate="drift"] {
+      animation: none !important;
+      transform: none !important;
+    }
   }
 }

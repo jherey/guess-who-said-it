@@ -5,6 +5,7 @@ import type { Game } from "@/types";
 function createTestGame(overrides: Partial<Game> = {}): Game {
   return {
     code: "ABCD",
+    gameKey: "guess-who",
     phase: "LOBBY",
     players: [],
     promptText: "",
@@ -14,6 +15,8 @@ function createTestGame(overrides: Partial<Game> = {}): Game {
     config: { maxPlayers: 10, guessTimerSeconds: 20 },
     createdAt: Date.now(),
     timer: null,
+    revealStartedAt: null,
+    reactions: [],
     ...overrides,
   };
 }

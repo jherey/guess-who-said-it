@@ -15,8 +15,9 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Guess Who Said It",
-  description: "A real-time multiplayer icebreaker game for team retros",
+  title: "Parley — A few good games for the team you already have",
+  description:
+    "Parley is a small platform of multiplayer games designed for retros, kickoffs, and the time between meetings. No accounts. Share a code, play in a minute.",
   icons: {
     icon: "/favicon.svg",
   },

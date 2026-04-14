@@ -1,4 +1,11 @@
-import type { Game, GamePhase, GameView, Player } from "@/types";
+import type { Game, GamePhase, GameView } from "@/types";
+
+/**
+ * The view shape the engine produces. Platform-level fields (gameKey, meta)
+ * are added by the view enricher before the view leaves the server — the
+ * engine has no knowledge of the registry.
+ */
+export type EngineGameView = Omit<GameView, "gameKey" | "meta">;
 
 /**
  * Interface that each game mode implements.
@@ -19,7 +26,7 @@ export interface GameType {
   calculateScores(game: Game, roundIndex: number): Map<string, number>;
 
   /** Build a phase-aware view of the game for a specific player. */
-  buildGameView(game: Game, playerId: string): GameView;
+  buildGameView(game: Game, playerId: string): EngineGameView;
 
   /** Calculate end-of-game awards. */
   calculateAwards(game: Game): Award[];

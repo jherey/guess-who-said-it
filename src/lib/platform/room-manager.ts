@@ -1,16 +1,29 @@
 import type { Game, Player } from "@/types";
 import type { GameStore } from "@/lib/store/game-store";
+import type { GameRegistry } from "@/lib/games/registry";
 import { getNextPlayerIdentity } from "@/lib/player-pool";
 
 export class RoomManager {
-  constructor(private store: GameStore) {}
+  constructor(
+    private store: GameStore,
+    private registry: GameRegistry
+  ) {}
 
-  async createRoom(hostName: string): Promise<Game> {
+  async createRoom(hostName: string, gameKey: string): Promise<Game> {
+    const entry = this.registry[gameKey];
+    if (!entry) {
+      throw new Error(`Unknown game: "${gameKey}"`);
+    }
+    if (entry.meta.status !== "available") {
+      throw new Error(`Game "${gameKey}" is not yet available`);
+    }
+
     const code = await this.generateUniqueCode();
     const host = this.createPlayer(hostName, 0, true);
 
     const game: Game = {
       code,
+      gameKey,
       phase: "LOBBY",
       players: [host],
       promptText: "",
@@ -20,6 +33,8 @@ export class RoomManager {
       config: { maxPlayers: 10, guessTimerSeconds: 20 },
       createdAt: Date.now(),
       timer: null,
+      revealStartedAt: null,
+      reactions: [],
     };
 
     return this.store.create(game);

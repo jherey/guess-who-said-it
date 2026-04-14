@@ -1,45 +1,40 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { useGamePolling } from "@/lib/hooks/use-game-polling";
 import { useCountdown } from "@/lib/hooks/use-countdown";
-import type { GameView } from "@/types";
+import type { GameView, Player, Reaction, RoundView } from "@/types";
 
-interface GameBoardClientProps {
+export interface HostScreenProps {
   code: string;
+  playerId: string;
+  gameView: GameView;
+  refetch: () => void;
 }
 
-export function GameBoardClient({ code }: GameBoardClientProps) {
-  const [playerId, setPlayerId] = useState("");
+/** Time between each card flip on the reveal cascade (ms). */
+const REVEAL_INTERVAL_MS = 2500;
+
+const REACTION_LABELS: Record<string, string> = {
+  "knew-it": "Knew it!",
+  "no-way": "No way!",
+  legend: "Legend",
+};
+
+/**
+ * Guess Who Said It — host/projected screen.
+ *
+ * The page-level dispatcher handles polling, error states, and resolves
+ * the player identity. This component receives a current GameView and
+ * dispatches by phase to the appropriate sub-screen.
+ */
+export function HostScreen({ code, playerId, gameView }: HostScreenProps) {
   const [origin, setOrigin] = useState("");
-
   useEffect(() => {
-    setPlayerId(localStorage.getItem(`player-${code}`) ?? "");
     setOrigin(window.location.origin);
-  }, [code]);
-
-  const { gameView, error } = useGamePolling(code, playerId);
-
-  if (error) {
-    return (
-      <main className="flex-1 flex flex-col items-center justify-center p-8">
-        <p className="text-destructive text-lg">{error}</p>
-      </main>
-    );
-  }
-
-  if (!gameView) {
-    return (
-      <main className="flex-1 flex flex-col items-center justify-center p-8">
-        <p className="text-muted-foreground text-lg animate-pulse">
-          Loading...
-        </p>
-      </main>
-    );
-  }
+  }, []);
 
   if (gameView.phase === "LOBBY") {
     return <LobbyBoard code={code} origin={origin} gameView={gameView} />;
@@ -54,7 +49,7 @@ export function GameBoardClient({ code }: GameBoardClientProps) {
   }
 
   if (gameView.phase === "REVEAL") {
-    return <RevealBoard code={code} gameView={gameView} />;
+    return <RevealCascadeBoard code={code} gameView={gameView} />;
   }
 
   if (gameView.phase === "SCOREBOARD") {
@@ -320,8 +315,18 @@ function GuessingBoard({
   const { seconds, isExpired, isPaused } = useCountdown(gameView.timer);
 
   const round = gameView.currentRound;
+
+  // Reset local UI state when the round changes.
+  const roundIndex = round?.index ?? -1;
+  useEffect(() => {
+    setSelectedId(null);
+    setGuessed(false);
+    setIsSubmitting(false);
+  }, [roundIndex]);
+
   if (!round) return null;
 
+  const isLastRound = round.index >= gameView.rounds.length - 1;
   const isAuthor = gameView.isCurrentRoundAuthor;
   const alreadyGuessed =
     guessed || round.guesses.some((g) => g.playerId === playerId);
@@ -486,149 +491,305 @@ function GuessingBoard({
           +10s
         </Button>
         <Button
-          onClick={() => sendControl("reveal")}
+          onClick={() => sendControl("next-round")}
           className="font-display font-bold"
         >
-          Reveal
+          {isLastRound ? "Reveal All Answers" : "Next Round"}
         </Button>
       </div>
     </main>
   );
 }
 
-function RevealBoard({
+/**
+ * Reveal cascade screen. After all rounds were guessed blind, the host
+ * triggers this phase and the answers flip open one at a time, with the
+ * scoreboard ticking up alongside. Reactions float across the whole screen.
+ */
+function RevealCascadeBoard({
   code,
   gameView,
 }: {
   code: string;
   gameView: GameView;
 }) {
-  const round = gameView.currentRound;
-  if (!round) return null;
+  // Force a periodic re-render so the cascade timing advances smoothly.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(id);
+  }, []);
 
-  const author = gameView.players.find((p) => p.id === round.authorId);
-  const isLastRound =
-    round.index >= gameView.rounds.length - 1;
+  const startedAt = gameView.revealStartedAt ?? now;
+  const elapsed = Math.max(0, now - startedAt);
+  // First card flips at t=0, second at t=interval, etc.
+  const flippedCount = Math.min(
+    gameView.rounds.length,
+    Math.floor(elapsed / REVEAL_INTERVAL_MS) + 1
+  );
+  const allFlipped = flippedCount >= gameView.rounds.length;
 
-  async function sendControl(action: string) {
+  // Running scores derived from how many cards have flipped so far.
+  const partialScores = useMemo(
+    () => computePartialScores(gameView.rounds.slice(0, flippedCount)),
+    [gameView.rounds, flippedCount]
+  );
+
+  async function handleContinue() {
     await fetch(`/api/game/${code}/control`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action: "next-round" }),
     });
   }
 
-  // Reaction labels for display
-  const reactionLabels: Record<string, string> = {
-    "knew-it": "Knew it!",
-    "no-way": "No way!",
-    "legend": "Legend",
-  };
-
   return (
-    <main className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
-      <p className="text-sm text-muted-foreground uppercase tracking-wider">
-        Round {round.index + 1} of {gameView.rounds.length}
-      </p>
+    <main className="flex-1 flex flex-col items-center p-6 gap-6 relative overflow-hidden">
+      <FloatingReactions
+        reactions={gameView.reactions}
+        players={gameView.players}
+      />
 
-      {/* The answer */}
-      <motion.blockquote
-        className="font-display text-3xl font-bold text-center leading-tight max-w-2xl"
-        initial={{ opacity: 0, y: -15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+      <motion.h1
+        className="font-display text-4xl font-bold text-primary"
+        initial={{ scale: 0.7, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 15 }}
       >
-        &ldquo;{round.answer}&rdquo;
-      </motion.blockquote>
+        The Reveal
+      </motion.h1>
 
-      {/* Author reveal */}
-      {author && (
-        <motion.div
-          className="flex flex-col items-center gap-3"
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.2 }}
-        >
-          <p className="text-sm text-muted-foreground uppercase tracking-wider">
-            Written by
-          </p>
-          <div className="flex flex-col items-center gap-2 p-6 rounded-2xl bg-card border-2 border-primary">
-            <span className="text-6xl">{author.avatar}</span>
-            <span className="font-display text-2xl font-bold">
-              {author.name}
-            </span>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Reactions stream */}
-      {round.reactions.length > 0 && (
-        <div className="flex flex-wrap justify-center gap-2">
-          <AnimatePresence>
-            {round.reactions.map((reaction, i) => {
-              const player = gameView.players.find(
-                (p) => p.id === reaction.playerId
-              );
+      <div className="flex flex-col lg:flex-row gap-6 w-full max-w-7xl flex-1">
+        {/* Cards grid */}
+        <div className="flex-1">
+          <div
+            className={`grid gap-4 ${
+              gameView.rounds.length <= 4
+                ? "grid-cols-1 sm:grid-cols-2"
+                : gameView.rounds.length <= 6
+                  ? "grid-cols-2 sm:grid-cols-3"
+                  : gameView.rounds.length <= 8
+                    ? "grid-cols-2 sm:grid-cols-4"
+                    : "grid-cols-2 sm:grid-cols-5"
+            }`}
+          >
+            {gameView.rounds.map((round, i) => {
+              const flipped = i < flippedCount;
+              const author = round.authorId
+                ? gameView.players.find((p) => p.id === round.authorId)
+                : null;
               return (
-                <motion.span
-                  key={`${reaction.playerId}-${i}`}
-                  initial={{ scale: 0, opacity: 0, y: 20, rotate: -10 }}
-                  animate={{ scale: 1, opacity: 1, y: 0, rotate: 0 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-card border border-border text-sm font-medium"
-                >
-                  <span>{player?.avatar}</span>
-                  <span>{reactionLabels[reaction.type] ?? reaction.type}</span>
-                </motion.span>
+                <RevealCard
+                  key={round.index}
+                  round={round}
+                  flipped={flipped}
+                  author={author ?? null}
+                  players={gameView.players}
+                />
               );
             })}
-          </AnimatePresence>
+          </div>
         </div>
-      )}
 
-      {/* Scores */}
-      <motion.div
-        className="flex flex-col items-center gap-3"
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5, duration: 0.4 }}
-      >
-        <p className="text-sm text-muted-foreground uppercase tracking-wider">
-          Scores
-        </p>
-        <div className="flex flex-wrap justify-center gap-3">
-          {[...gameView.players]
-            .sort((a, b) => b.score - a.score)
-            .map((player) => (
-              <div
-                key={player.id}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-card border border-border"
-              >
-                <span className="text-xl">{player.avatar}</span>
-                <span className="text-sm font-medium">{player.name}</span>
-                <span className="font-display font-bold text-primary">
-                  {player.score}
-                </span>
-              </div>
-            ))}
-        </div>
-      </motion.div>
+        {/* Running scoreboard sidebar */}
+        <aside className="lg:w-72 shrink-0">
+          <div className="rounded-2xl bg-card border border-border p-4 sticky top-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3 text-center">
+              Running Scores
+            </p>
+            <div className="flex flex-col gap-2">
+              {[...gameView.players]
+                .map((p) => ({
+                  player: p,
+                  partial: partialScores.get(p.id) ?? 0,
+                }))
+                .sort((a, b) => b.partial - a.partial)
+                .map(({ player, partial }) => (
+                  <div
+                    key={player.id}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-background"
+                  >
+                    <span className="text-lg">{player.avatar}</span>
+                    <span className="flex-1 text-sm font-medium truncate">
+                      {player.name}
+                    </span>
+                    <motion.span
+                      key={partial}
+                      initial={{ scale: 1.4, color: "var(--color-primary)" }}
+                      animate={{ scale: 1, color: "var(--color-primary)" }}
+                      transition={{ type: "spring", stiffness: 300, damping: 15 }}
+                      className="font-display font-bold text-primary tabular-nums"
+                    >
+                      {partial}
+                    </motion.span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </aside>
+      </div>
 
-      {/* Host control: Next Round or Scoreboard */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
+      <Button
+        onClick={handleContinue}
+        className="h-14 px-10 text-xl font-display font-bold"
       >
-        <Button
-          onClick={() => sendControl("next-round")}
-          className="h-14 px-10 text-xl font-display font-bold"
-        >
-          {isLastRound ? "See Final Scores" : "Next Round"}
-        </Button>
-      </motion.div>
+        {allFlipped ? "Show Final Scores" : "Skip to Final Scores"}
+      </Button>
     </main>
   );
+}
+
+function RevealCard({
+  round,
+  flipped,
+  author,
+  players,
+}: {
+  round: RoundView;
+  flipped: boolean;
+  author: Player | null;
+  players: Player[];
+}) {
+  const correctGuessers = flipped
+    ? round.guesses
+        .filter((g) => g.guessedAuthorId === round.authorId)
+        .map((g) => players.find((p) => p.id === g.playerId))
+        .filter((p): p is Player => Boolean(p))
+    : [];
+
+  return (
+    <motion.div
+      className="rounded-2xl bg-card border-2 p-4 flex flex-col gap-3"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        borderColor: flipped && author
+          ? author.color
+          : "var(--color-border)",
+      }}
+      transition={{ duration: 0.4 }}
+    >
+      <blockquote className="font-display text-base font-bold leading-snug min-h-[3.5rem]">
+        &ldquo;{round.answer}&rdquo;
+      </blockquote>
+
+      <div className="border-t border-border pt-3">
+        <AnimatePresence mode="wait">
+          {flipped && author ? (
+            <motion.div
+              key="author"
+              initial={{ rotateY: 90, opacity: 0 }}
+              animate={{ rotateY: 0, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 18 }}
+              className="flex items-center gap-2"
+            >
+              <span className="text-3xl">{author.avatar}</span>
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Written by
+                </span>
+                <span className="font-display font-bold">{author.name}</span>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center gap-2 text-muted-foreground"
+            >
+              <span className="text-3xl">❓</span>
+              <span className="text-sm">Who said it?</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {flipped && correctGuessers.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="mt-2 flex items-center gap-1.5 flex-wrap"
+          >
+            <span className="text-xs text-muted-foreground">Got it:</span>
+            {correctGuessers.map((p) => (
+              <span key={p.id} title={p.name} className="text-lg">
+                {p.avatar}
+              </span>
+            ))}
+          </motion.div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function FloatingReactions({
+  reactions,
+  players,
+}: {
+  reactions: Reaction[];
+  players: Player[];
+}) {
+  // Show only the most recent reactions, briefly. Each unique reaction
+  // (by index in the array) lives ~3 seconds on screen.
+  const REACTION_LIFETIME_MS = 3000;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+
+  const visible = reactions.filter(
+    (r) => now - r.sentAt <= REACTION_LIFETIME_MS
+  );
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <AnimatePresence>
+        {visible.map((reaction) => {
+          const player = players.find((p) => p.id === reaction.playerId);
+          // Stable pseudo-random horizontal position based on sentAt.
+          const left = ((reaction.sentAt * 9301 + 49297) % 233280) / 233280;
+          return (
+            <motion.div
+              key={reaction.sentAt + ":" + reaction.playerId}
+              initial={{ y: "100vh", opacity: 0, scale: 0.6 }}
+              animate={{ y: "-10vh", opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                duration: REACTION_LIFETIME_MS / 1000,
+                ease: "easeOut",
+              }}
+              style={{ left: `${5 + left * 85}%` }}
+              className="absolute bottom-0 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-card/95 backdrop-blur border border-border text-sm font-medium shadow-lg"
+            >
+              <span>{player?.avatar}</span>
+              <span>{REACTION_LABELS[reaction.type] ?? reaction.type}</span>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** Sum +1 per correct guess to the guesser, +1 per wrong guess to the author. */
+function computePartialScores(rounds: RoundView[]): Map<string, number> {
+  const scores = new Map<string, number>();
+  for (const round of rounds) {
+    if (!round.authorId) continue;
+    for (const guess of round.guesses) {
+      if (guess.guessedAuthorId === round.authorId) {
+        scores.set(guess.playerId, (scores.get(guess.playerId) ?? 0) + 1);
+      } else {
+        scores.set(round.authorId, (scores.get(round.authorId) ?? 0) + 1);
+      }
+    }
+  }
+  return scores;
 }
 
 function ScoreboardBoard({

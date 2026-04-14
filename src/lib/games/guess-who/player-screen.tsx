@@ -3,118 +3,24 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { useGamePolling } from "@/lib/hooks/use-game-polling";
 import { useCountdown } from "@/lib/hooks/use-countdown";
-import type { GameView } from "@/types";
+import type { GameView, ReactionType } from "@/types";
 
-interface PlayerScreenClientProps {
-  code: string;
-}
-
-export function PlayerScreenClient({ code }: PlayerScreenClientProps) {
-  const [playerName, setPlayerName] = useState("");
-  const [playerId, setPlayerId] = useState("");
-  const [isJoining, setIsJoining] = useState(false);
-  const [error, setError] = useState("");
-  const [joined, setJoined] = useState(false);
-
-  useEffect(() => {
-    const storedId = localStorage.getItem(`player-${code}`);
-    if (storedId) {
-      setPlayerId(storedId);
-      setJoined(true);
-    }
-  }, [code]);
-
-  async function handleJoin() {
-    if (!playerName.trim()) {
-      setError("Enter your name");
-      return;
-    }
-    setIsJoining(true);
-    setError("");
-    try {
-      const res = await fetch(`/api/game/${code}/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playerName: playerName.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      localStorage.setItem(`player-${code}`, data.playerId);
-      setPlayerId(data.playerId);
-      setJoined(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to join");
-      setIsJoining(false);
-    }
-  }
-
-  if (!joined) {
-    return (
-      <main className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
-        <div className="text-center">
-          <p className="text-sm text-muted-foreground uppercase tracking-wider">
-            Joining Room
-          </p>
-          <p className="font-mono text-4xl font-bold tracking-[0.3em] text-primary mt-2">
-            {code}
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-3 w-full max-w-xs">
-          <Input
-            placeholder="Your name"
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-            className="h-12 text-center text-lg"
-            autoFocus
-          />
-          <Button
-            onClick={handleJoin}
-            disabled={isJoining}
-            className="h-12 text-lg font-display font-semibold"
-          >
-            {isJoining ? "Joining..." : "Join Game"}
-          </Button>
-          {error && (
-            <p className="text-sm text-destructive text-center">{error}</p>
-          )}
-        </div>
-      </main>
-    );
-  }
-
-  return <PlayerGameView code={code} playerId={playerId} />;
-}
-
-function PlayerGameView({
-  code,
-  playerId,
-}: {
+export interface PlayerScreenProps {
   code: string;
   playerId: string;
-}) {
-  const { gameView, error } = useGamePolling(code, playerId);
+  gameView: GameView;
+  refetch: () => void;
+}
 
-  if (error) {
-    return (
-      <main className="flex-1 flex flex-col items-center justify-center p-8">
-        <p className="text-destructive">{error}</p>
-      </main>
-    );
-  }
-
-  if (!gameView) {
-    return (
-      <main className="flex-1 flex flex-col items-center justify-center p-8">
-        <p className="text-muted-foreground animate-pulse">Loading...</p>
-      </main>
-    );
-  }
-
+/**
+ * Guess Who Said It — phone-first player UI.
+ *
+ * The page-level dispatcher handles polling, error states, and the join
+ * flow. This component receives a current GameView and dispatches by phase
+ * to the appropriate sub-screen.
+ */
+export function PlayerScreen({ code, playerId, gameView }: PlayerScreenProps) {
   if (gameView.phase === "LOBBY") {
     return <PlayerLobby gameView={gameView} playerId={playerId} />;
   }
@@ -319,6 +225,16 @@ function PlayerGuessing({
   const { seconds, isExpired, isPaused } = useCountdown(gameView.timer);
 
   const round = gameView.currentRound;
+  const roundIndex = round?.index ?? -1;
+
+  // Reset local UI state when the round changes so each round is a fresh slate.
+  useEffect(() => {
+    setGuessed(false);
+    setSelectedId(null);
+    setIsSubmitting(false);
+    setError("");
+  }, [roundIndex]);
+
   if (!round) return null;
 
   const alreadyGuessed =
@@ -352,6 +268,7 @@ function PlayerGuessing({
   }
 
   const me = gameView.players.find((p) => p.id === playerId);
+  const totalRounds = gameView.rounds.length;
 
   if (isAuthor) {
     return (
@@ -362,6 +279,9 @@ function PlayerGuessing({
             <span className="font-display font-semibold">{me.name}</span>
           </div>
         )}
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">
+          Round {round.index + 1} of {totalRounds}
+        </p>
         <p
           className={`font-mono text-4xl font-bold ${
             isExpired
@@ -397,13 +317,15 @@ function PlayerGuessing({
         )}
         <span className="text-5xl">✓</span>
         <h2 className="font-display text-2xl font-bold text-primary">
-          Guess Locked In!
+          Guess Locked In
         </h2>
-        <p className="text-muted-foreground text-sm">
-          Waiting for everyone else...
+        <p className="text-muted-foreground text-sm text-center max-w-xs">
+          All answers stay anonymous until the end. Sit tight for the next
+          one.
         </p>
-        <p className="text-sm text-muted-foreground">
-          {round.guessCount}/{gameView.players.length - 1} guessed
+        <p className="text-xs text-muted-foreground">
+          Round {round.index + 1} of {totalRounds} · {round.guessCount}/
+          {gameView.players.length - 1} guessed
         </p>
       </main>
     );
@@ -424,13 +346,16 @@ function PlayerGuessing({
         {isPaused ? "⏸" : isExpired ? "0" : seconds}
       </p>
 
-      {/* Player identity */}
+      {/* Player identity + round counter */}
       {me && (
         <div className="flex items-center gap-2">
           <span className="text-2xl">{me.avatar}</span>
           <span className="font-display font-semibold">{me.name}</span>
         </div>
       )}
+      <p className="text-xs text-muted-foreground uppercase tracking-wider">
+        Round {round.index + 1} of {totalRounds}
+      </p>
 
       {/* Prompt + anonymous answer */}
       <p className="text-xs text-muted-foreground text-center max-w-sm">
@@ -485,7 +410,7 @@ function PlayerGuessing({
         </>
       ) : (
         <p className="text-muted-foreground text-sm">
-          Time&apos;s up! Waiting for reveal...
+          Time&apos;s up! Waiting for the next round...
         </p>
       )}
 
@@ -505,23 +430,21 @@ function PlayerReveal({
   gameView: GameView;
   playerId: string;
 }) {
-  const [reacted, setReacted] = useState(false);
-  const round = gameView.currentRound;
-  if (!round) return null;
-
-  const author = gameView.players.find((p) => p.id === round.authorId);
   const me = gameView.players.find((p) => p.id === playerId);
-  const myGuess = round.guesses.find((g) => g.playerId === playerId);
-  const guessedCorrectly = myGuess?.guessedAuthorId === round.authorId;
 
-  const reactions: { type: "knew-it" | "no-way" | "legend"; label: string }[] = [
-    { type: "knew-it", label: "Knew it!" },
-    { type: "no-way", label: "No way!" },
-    { type: "legend", label: "Legend" },
+  const reactions: { type: ReactionType; label: string; emoji: string }[] = [
+    { type: "knew-it", label: "Knew it!", emoji: "🎯" },
+    { type: "no-way", label: "No way!", emoji: "😱" },
+    { type: "legend", label: "Legend", emoji: "🔥" },
   ];
 
-  async function handleReaction(type: string) {
-    setReacted(true);
+  // How many of MY reactions the server has acked, so the count "Sent: N"
+  // reflects what's actually recorded.
+  const myReactionCount = gameView.reactions.filter(
+    (r) => r.playerId === playerId
+  ).length;
+
+  async function sendReaction(type: ReactionType) {
     try {
       await fetch(`/api/game/${code}/react`, {
         method: "POST",
@@ -529,98 +452,58 @@ function PlayerReveal({
         body: JSON.stringify({ playerId, type }),
       });
     } catch {
-      // Reaction is best-effort
+      // Best effort — reactions are non-critical.
     }
   }
 
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
-      {/* Answer */}
-      <motion.blockquote
-        className="font-display text-xl font-bold text-center max-w-sm leading-tight"
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+      <motion.h1
+        className="font-display text-3xl font-bold text-primary"
+        initial={{ scale: 0.7, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 15 }}
       >
-        &ldquo;{round.answer}&rdquo;
-      </motion.blockquote>
+        The Reveal!
+      </motion.h1>
 
-      {/* Author reveal */}
-      {author && (
-        <motion.div
-          className="flex flex-col items-center gap-2"
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.3 }}
-        >
-          <p className="text-sm text-muted-foreground">Written by</p>
-          <div className="flex flex-col items-center gap-1 p-4 rounded-xl bg-card border-2 border-primary">
-            <span className="text-5xl">{author.avatar}</span>
-            <span className="font-display text-lg font-bold">{author.name}</span>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Your guess result */}
-      {myGuess && (
-        <motion.p
-          className={`font-display font-semibold text-lg ${
-            guessedCorrectly ? "text-primary" : "text-muted-foreground"
-          }`}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.6, type: "spring", stiffness: 300, damping: 20 }}
-        >
-          {guessedCorrectly ? "You guessed right! +1" : "You got fooled!"}
-        </motion.p>
-      )}
-
-      {/* Reaction buttons */}
-      {!reacted ? (
-        <div className="flex gap-3">
-          {reactions.map((r, i) => (
-            <motion.div
-              key={r.type}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8 + i * 0.1, type: "spring", stiffness: 300, damping: 20 }}
-            >
-              <Button
-                variant="secondary"
-                onClick={() => handleReaction(r.type)}
-                className="font-display text-lg px-5 py-3"
-              >
-                {r.label}
-              </Button>
-            </motion.div>
-          ))}
-        </div>
-      ) : (
-        <motion.p
-          className="text-sm text-muted-foreground"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          Reaction sent!
-        </motion.p>
-      )}
-
-      {/* Your score */}
-      {me && (
-        <motion.div
-          className="flex items-center gap-2"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1 }}
-        >
-          <span className="text-2xl">{me.avatar}</span>
-          <span className="font-display font-semibold">Score: {me.score}</span>
-        </motion.div>
-      )}
-
-      <p className="text-sm text-muted-foreground animate-pulse">
-        Waiting for host...
+      <p className="text-sm text-muted-foreground text-center max-w-xs">
+        Watch the host screen — answers are flipping open one by one. Tap to
+        react however you like.
       </p>
+
+      <div className="flex flex-col gap-3 w-full max-w-xs">
+        {reactions.map((r, i) => (
+          <motion.div
+            key={r.type}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 + i * 0.1, type: "spring", stiffness: 300, damping: 20 }}
+          >
+            <Button
+              variant="secondary"
+              onClick={() => sendReaction(r.type)}
+              className="w-full h-14 text-lg font-display font-semibold flex items-center justify-center gap-2"
+            >
+              <span className="text-2xl">{r.emoji}</span>
+              {r.label}
+            </Button>
+          </motion.div>
+        ))}
+      </div>
+
+      {myReactionCount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          You sent {myReactionCount} reaction{myReactionCount !== 1 ? "s" : ""}
+        </p>
+      )}
+
+      {me && (
+        <div className="flex items-center gap-2 pt-4 border-t border-border w-full max-w-xs justify-center">
+          <span className="text-2xl">{me.avatar}</span>
+          <span className="font-display font-semibold">{me.name}</span>
+        </div>
+      )}
     </main>
   );
 }

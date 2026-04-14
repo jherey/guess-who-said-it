@@ -1,0 +1,9 @@
+/*
+ * Guess Who Said It — per-game theme overrides.
+ *
+ * Phase 1 ships with no overrides. Guess Who uses the platform default theme
+ * (dark + warm coral primary) defined on :root in src/app/globals.css.
+ *
+ * To override, target the [data-game="guess-who"] selector and override any
+ * of the documented theme tokens (see globals.css for the list).
+ */

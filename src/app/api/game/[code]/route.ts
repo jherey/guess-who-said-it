@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GuessWhoGame } from "@/lib/engine";
+import { enrichGameView } from "@/lib/platform";
 import { getGameStore } from "@/lib/store";
+import { getGameEntry } from "@/lib/games/registry";
 
 /** GET /api/game/[code] — Get game state (phase-aware) */
 export async function GET(
@@ -17,8 +18,16 @@ export async function GET(
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
-    const gameType = new GuessWhoGame();
-    const view = gameType.buildGameView(game, playerId);
+    const entry = getGameEntry(game.gameKey);
+    if (!entry || !entry.engine) {
+      return NextResponse.json(
+        { error: `Unknown game: "${game.gameKey}"` },
+        { status: 500 }
+      );
+    }
+
+    const engineView = entry.engine.buildGameView(game, playerId);
+    const view = enrichGameView(engineView, game.gameKey, entry.meta);
 
     return NextResponse.json(view);
   } catch (error) {

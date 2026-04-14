@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { GameController } from "./game-controller";
 import { InMemoryGameStore } from "@/lib/store/in-memory-store";
 import { RoomManager } from "./room-manager";
+import { GAMES } from "@/lib/games/registry";
 import type { Game } from "@/types";
 
 describe("GameController", () => {
@@ -11,9 +12,9 @@ describe("GameController", () => {
 
   beforeEach(async () => {
     store = new InMemoryGameStore();
-    controller = new GameController(store);
-    const roomManager = new RoomManager(store);
-    game = await roomManager.createRoom("Alice");
+    controller = new GameController(store, GAMES);
+    const roomManager = new RoomManager(store, GAMES);
+    game = await roomManager.createRoom("Alice", "guess-who");
     await roomManager.joinRoom(game.code, "Bob");
     await roomManager.joinRoom(game.code, "Carol");
   });
@@ -223,9 +224,9 @@ describe("GameController", () => {
     });
   });
 
-  describe("reveal and scoring", () => {
+  describe("nextRound and reveal flow", () => {
     beforeEach(async () => {
-      // Set up a game in GUESSING phase with known guesses
+      // Set up a game in GUESSING phase
       await controller.startGame(game.code);
       const current = (await store.get(game.code))!;
       for (const player of current.players) {
@@ -237,21 +238,46 @@ describe("GameController", () => {
       }
     });
 
-    it("reveal applies scores: +1 correct guess, +1 to author per fooled player", async () => {
-      const beforeReveal = (await store.get(game.code))!;
-      const round = beforeReveal.rounds[0];
-      const nonAuthors = beforeReveal.players.filter(
-        (p) => p.id !== round.authorId
+    it("advances within GUESSING when more rounds remain", async () => {
+      const before = (await store.get(game.code))!;
+      expect(before.currentRoundIndex).toBe(0);
+
+      const advanced = await controller.nextRound(game.code);
+      expect(advanced.phase).toBe("GUESSING");
+      expect(advanced.currentRoundIndex).toBe(1);
+      expect(advanced.timer).not.toBeNull();
+      // Author info must NOT be revealed during inter-round transitions.
+      expect(advanced.revealStartedAt).toBeNull();
+    });
+
+    it("transitions GUESSING → REVEAL after the final guessing round", async () => {
+      const g = (await store.get(game.code))!;
+      // Advance through all rounds; last advance should hit REVEAL.
+      for (let i = 0; i < g.rounds.length - 1; i++) {
+        await controller.nextRound(game.code);
+      }
+      const revealed = await controller.nextRound(game.code);
+
+      expect(revealed.phase).toBe("REVEAL");
+      expect(revealed.revealStartedAt).not.toBeNull();
+      expect(revealed.timer).toBeNull();
+    });
+
+    it("applies all round scores at the GUESSING → REVEAL transition", async () => {
+      const before = (await store.get(game.code))!;
+      const round0 = before.rounds[0];
+      const nonAuthors = before.players.filter(
+        (p) => p.id !== round0.authorId
       );
 
-      // First player guesses correctly, second guesses wrong
+      // First non-author guesses correctly on round 0; second guesses wrong.
       await controller.submitGuess(
         game.code,
         nonAuthors[0].id,
-        round.authorId
+        round0.authorId
       );
-      const wrongTarget = beforeReveal.players.find(
-        (p) => p.id !== round.authorId && p.id !== nonAuthors[1].id
+      const wrongTarget = before.players.find(
+        (p) => p.id !== round0.authorId && p.id !== nonAuthors[1].id
       )!;
       await controller.submitGuess(
         game.code,
@@ -259,66 +285,90 @@ describe("GameController", () => {
         wrongTarget.id
       );
 
-      const revealed = await controller.revealRound(game.code);
+      // Walk through to REVEAL without scores applying mid-game.
+      const midGuessing = (await store.get(game.code))!;
+      for (const player of midGuessing.players) {
+        // Scores must NOT have been applied yet during GUESSING.
+        expect(player.score).toBe(0);
+      }
+
+      for (let i = 0; i < midGuessing.rounds.length; i++) {
+        await controller.nextRound(game.code);
+      }
+
+      const revealed = (await store.get(game.code))!;
       expect(revealed.phase).toBe("REVEAL");
 
-      // Correct guesser gets +1
+      // Correct guesser earned +1
       const correctGuesser = revealed.players.find(
         (p) => p.id === nonAuthors[0].id
       )!;
       expect(correctGuesser.score).toBe(1);
 
-      // Author gets +1 for fooling the wrong guesser
+      // Author earned +1 for fooling the wrong guesser
       const author = revealed.players.find(
-        (p) => p.id === round.authorId
+        (p) => p.id === round0.authorId
       )!;
       expect(author.score).toBe(1);
     });
 
-    it("nextRound advances to next answer's GUESSING phase", async () => {
-      await controller.revealRound(game.code);
-      const next = await controller.nextRound(game.code);
-
-      expect(next.phase).toBe("GUESSING");
-      expect(next.currentRoundIndex).toBe(1);
-      expect(next.timer).not.toBeNull();
-    });
-
-    it("nextRound transitions to SCOREBOARD after the last round", async () => {
+    it("REVEAL → SCOREBOARD via nextRound", async () => {
       const g = (await store.get(game.code))!;
-      // Reveal and advance through all rounds
       for (let i = 0; i < g.rounds.length; i++) {
-        await controller.revealRound(game.code);
-        if (i < g.rounds.length - 1) {
-          await controller.nextRound(game.code);
-        }
+        await controller.nextRound(game.code);
       }
 
-      const final = await controller.nextRound(game.code);
-      expect(final.phase).toBe("SCOREBOARD");
+      const finalGame = await controller.nextRound(game.code);
+      expect(finalGame.phase).toBe("SCOREBOARD");
     });
 
-    it("submitReaction adds a reaction to the current round", async () => {
-      await controller.revealRound(game.code);
-      const g = (await store.get(game.code))!;
-      const playerId = g.players[0].id;
-
-      const updated = await controller.submitReaction(
-        game.code,
-        playerId,
-        "no-way"
+    it("rejects nextRound from non-advancing phases", async () => {
+      await store.update(game.code, (g) => ({ ...g, phase: "LOBBY" as const }));
+      await expect(controller.nextRound(game.code)).rejects.toThrow(
+        "Cannot advance"
       );
-      const round = updated.rounds[updated.currentRoundIndex];
-      expect(round.reactions).toHaveLength(1);
-      expect(round.reactions[0].playerId).toBe(playerId);
-      expect(round.reactions[0].type).toBe("no-way");
     });
 
-    it("rejects reaction when not in REVEAL phase", async () => {
-      // Still in GUESSING phase
+    it("rejects reactions outside REVEAL", async () => {
       await expect(
         controller.submitReaction(game.code, game.players[0].id, "knew-it")
       ).rejects.toThrow("REVEAL");
+    });
+
+    it("submitReaction stores reactions globally on the game", async () => {
+      const g = (await store.get(game.code))!;
+      // Walk to REVEAL.
+      for (let i = 0; i < g.rounds.length; i++) {
+        await controller.nextRound(game.code);
+      }
+
+      const updated = await controller.submitReaction(
+        game.code,
+        g.players[0].id,
+        "no-way"
+      );
+      expect(updated.reactions).toHaveLength(1);
+      expect(updated.reactions[0].playerId).toBe(g.players[0].id);
+      expect(updated.reactions[0].type).toBe("no-way");
+      expect(updated.reactions[0].sentAt).toBeGreaterThan(0);
+    });
+
+    it("allows multiple reactions from the same player during REVEAL", async () => {
+      const g = (await store.get(game.code))!;
+      for (let i = 0; i < g.rounds.length; i++) {
+        await controller.nextRound(game.code);
+      }
+
+      const playerId = g.players[0].id;
+      await controller.submitReaction(game.code, playerId, "knew-it");
+      await controller.submitReaction(game.code, playerId, "no-way");
+      const final = await controller.submitReaction(
+        game.code,
+        playerId,
+        "legend"
+      );
+
+      expect(final.reactions).toHaveLength(3);
     });
   });
 });

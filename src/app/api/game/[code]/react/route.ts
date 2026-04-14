@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GameController } from "@/lib/engine";
+import { GameController } from "@/lib/platform";
 import { getGameStore } from "@/lib/store";
+import { GAMES } from "@/lib/games/registry";
 
 /** POST /api/game/[code]/react — Send a reaction */
 export async function POST(
@@ -19,7 +20,7 @@ export async function POST(
     }
 
     const store = getGameStore();
-    const controller = new GameController(store);
+    const controller = new GameController(store, GAMES);
     await controller.submitReaction(code, playerId, type);
 
     return NextResponse.json({ ok: true });

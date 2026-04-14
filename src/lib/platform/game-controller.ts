@@ -1,13 +1,22 @@
 import type { Game, ReactionType, Round } from "@/types";
 import type { GameStore } from "@/lib/store/game-store";
-import { GuessWhoGame } from "./guess-who-game";
+import type { GameRegistry } from "@/lib/games/registry";
 import { GameTimer } from "@/lib/timer";
 import { pickRandomPrompt } from "@/lib/prompts";
 
-const gameType = new GuessWhoGame();
-
 export class GameController {
-  constructor(private store: GameStore) {}
+  constructor(
+    private store: GameStore,
+    private registry: GameRegistry
+  ) {}
+
+  private engineFor(game: Game) {
+    const entry = this.registry[game.gameKey];
+    if (!entry?.engine) {
+      throw new Error(`No engine registered for gameKey "${game.gameKey}"`);
+    }
+    return entry.engine;
+  }
 
   async startGame(code: string): Promise<Game> {
     const game = await this.store.get(code);
@@ -142,49 +151,36 @@ export class GameController {
     }));
   }
 
-  async revealRound(code: string): Promise<Game> {
-    const game = await this.store.get(code);
-    if (!game) throw new Error(`Game ${code} not found`);
-    if (game.phase !== "GUESSING") {
-      throw new Error("Can only reveal during GUESSING phase");
-    }
-
-    // Calculate scores for this round
-    const roundScores = gameType.calculateScores(game, game.currentRoundIndex);
-
-    return this.store.update(code, (g) => {
-      const rounds = [...g.rounds];
-      const currentRound = { ...rounds[g.currentRoundIndex] };
-      currentRound.revealed = true;
-      rounds[g.currentRoundIndex] = currentRound;
-
-      // Apply scores to players
-      const players = g.players.map((p) => ({
-        ...p,
-        score: p.score + (roundScores.get(p.id) ?? 0),
-      }));
-
-      return {
-        ...g,
-        phase: "REVEAL" as const,
-        rounds,
-        players,
-        timer: null,
-      };
-    });
-  }
-
+  /**
+   * Advance the game forward.
+   *
+   * - GUESSING with more rounds remaining: advance to the next GUESSING round
+   *   (fresh timer). No author info is revealed.
+   * - GUESSING on the final round: transition to REVEAL. All round scores are
+   *   summed and applied at this point, and `revealStartedAt` is stamped so the
+   *   client cascade animation can play.
+   * - REVEAL: transition to SCOREBOARD.
+   */
   async nextRound(code: string): Promise<Game> {
     const game = await this.store.get(code);
     if (!game) throw new Error(`Game ${code} not found`);
-    if (game.phase !== "REVEAL") {
-      throw new Error("Can only advance from REVEAL phase");
+
+    if (game.phase === "GUESSING") {
+      const nextIndex = game.currentRoundIndex + 1;
+      const isLastRound = nextIndex >= game.rounds.length;
+
+      if (isLastRound) {
+        return this.transitionToReveal(code);
+      }
+
+      return this.store.update(code, (g) => ({
+        ...g,
+        currentRoundIndex: nextIndex,
+        timer: GameTimer.start(g.config.guessTimerSeconds, Date.now()),
+      }));
     }
 
-    const nextIndex = game.currentRoundIndex + 1;
-    const isLastRound = nextIndex >= game.rounds.length;
-
-    if (isLastRound) {
+    if (game.phase === "REVEAL") {
       return this.store.update(code, (g) => ({
         ...g,
         phase: "SCOREBOARD" as const,
@@ -192,12 +188,7 @@ export class GameController {
       }));
     }
 
-    return this.store.update(code, (g) => ({
-      ...g,
-      phase: "GUESSING" as const,
-      currentRoundIndex: nextIndex,
-      timer: GameTimer.start(g.config.guessTimerSeconds, Date.now()),
-    }));
+    throw new Error(`Cannot advance from ${game.phase} phase`);
   }
 
   async submitReaction(
@@ -211,16 +202,10 @@ export class GameController {
       throw new Error("Reactions can only be sent during REVEAL phase");
     }
 
-    return this.store.update(code, (g) => {
-      const rounds = [...g.rounds];
-      const currentRound = { ...rounds[g.currentRoundIndex] };
-      currentRound.reactions = [
-        ...currentRound.reactions,
-        { playerId, type },
-      ];
-      rounds[g.currentRoundIndex] = currentRound;
-      return { ...g, rounds };
-    });
+    return this.store.update(code, (g) => ({
+      ...g,
+      reactions: [...g.reactions, { playerId, type, sentAt: Date.now() }],
+    }));
   }
 
   async playAgain(code: string): Promise<Game> {
@@ -237,6 +222,8 @@ export class GameController {
       rounds: [],
       currentRoundIndex: 0,
       timer: null,
+      revealStartedAt: null,
+      reactions: [],
       players: g.players.map((p) => ({ ...p, score: 0 })),
     }));
   }
@@ -255,6 +242,32 @@ export class GameController {
     });
   }
 
+  private async transitionToReveal(code: string): Promise<Game> {
+    return this.store.update(code, (g) => {
+      const engine = this.engineFor(g);
+      // Sum score deltas across every round and apply them all at once.
+      const totals = new Map<string, number>();
+      for (let i = 0; i < g.rounds.length; i++) {
+        const deltas = engine.calculateScores(g, i);
+        for (const [playerId, delta] of deltas) {
+          totals.set(playerId, (totals.get(playerId) ?? 0) + delta);
+        }
+      }
+      const players = g.players.map((p) => ({
+        ...p,
+        score: p.score + (totals.get(p.id) ?? 0),
+      }));
+
+      return {
+        ...g,
+        phase: "REVEAL" as const,
+        players,
+        timer: null,
+        revealStartedAt: Date.now(),
+      };
+    });
+  }
+
   private buildRoundsFromAnswers(game: Game): Round[] {
     const entries = Object.entries(game.answers);
     for (let i = entries.length - 1; i > 0; i--) {
@@ -267,8 +280,6 @@ export class GameController {
       authorId,
       answer,
       guesses: [],
-      reactions: [],
-      revealed: false,
     }));
   }
 }

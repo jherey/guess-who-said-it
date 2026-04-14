@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { RoomManager } from "@/lib/engine";
+import { RoomManager } from "@/lib/platform";
 import { getGameStore } from "@/lib/store";
+import { GAMES } from "@/lib/games/registry";
 
 /** POST /api/game/[code]/join — Join a game room */
 export async function POST(
@@ -18,7 +19,7 @@ export async function POST(
     }
 
     const store = getGameStore();
-    const roomManager = new RoomManager(store);
+    const roomManager = new RoomManager(store, GAMES);
     const game = await roomManager.joinRoom(code, playerName.trim());
 
     const player = game.players.find((p) => p.name === playerName.trim())!;

@@ -1,11 +1,12 @@
-import type { Game, GamePhase, GameView, Round, RoundView } from "@/types";
-import type { GameType, Award } from "./game-type";
+import type { Game, GamePhase, Round, RoundView } from "@/types";
+import type { EngineGameView, GameType, Award } from "@/lib/platform";
 
 const PHASE_TRANSITIONS: Record<GamePhase, GamePhase[]> = {
   LOBBY: ["SUBMITTING"],
   SUBMITTING: ["GUESSING"],
-  GUESSING: ["REVEAL"],
-  REVEAL: ["GUESSING", "SCOREBOARD"],
+  // Guessing rounds chain together; only after the last one do we reach REVEAL.
+  GUESSING: ["GUESSING", "REVEAL"],
+  REVEAL: ["SCOREBOARD"],
   SCOREBOARD: [],
 };
 
@@ -37,11 +38,33 @@ export class GuessWhoGame implements GameType {
     return scores;
   }
 
-  buildGameView(game: Game, playerId: string): GameView {
-    const currentRound = game.rounds[game.currentRoundIndex] ?? null;
-    const isCurrentRoundAuthor = currentRound
-      ? currentRound.authorId === playerId
+  buildGameView(game: Game, playerId: string): EngineGameView {
+    const authorsExposed =
+      game.phase === "REVEAL" || game.phase === "SCOREBOARD";
+
+    const currentRoundRaw = game.rounds[game.currentRoundIndex] ?? null;
+    const isCurrentRoundAuthor = currentRoundRaw
+      ? currentRoundRaw.authorId === playerId
       : false;
+
+    const currentRound = currentRoundRaw
+      ? this.buildRoundView(currentRoundRaw, {
+          exposeAuthor: authorsExposed,
+          exposeAnswer: true,
+        })
+      : null;
+
+    // During GUESSING, only the current round's content is exposed in `rounds[]`.
+    // All other rounds are reduced to metadata so a snooping client can't see
+    // ahead. During REVEAL/SCOREBOARD everything is exposed for the cascade.
+    const rounds = game.rounds.map((r) => {
+      const exposeAnswer =
+        authorsExposed || r.index === game.currentRoundIndex;
+      return this.buildRoundView(r, {
+        exposeAuthor: authorsExposed,
+        exposeAnswer,
+      });
+    });
 
     const awards =
       game.phase === "SCOREBOARD" ? this.calculateAwards(game) : [];
@@ -51,13 +74,15 @@ export class GuessWhoGame implements GameType {
       phase: game.phase,
       players: game.players,
       promptText: game.promptText,
-      currentRound: currentRound ? this.buildRoundView(currentRound) : null,
-      rounds: game.rounds.map((r) => this.buildRoundView(r)),
+      currentRound,
+      rounds,
       timer: game.timer,
       submissionCount: Object.keys(game.answers).length,
       totalPlayers: game.players.length,
       isCurrentRoundAuthor,
       awards,
+      revealStartedAt: game.revealStartedAt,
+      reactions: authorsExposed ? game.reactions : [],
     };
   }
 
@@ -69,8 +94,8 @@ export class GuessWhoGame implements GameType {
     const fooledCounts = new Map<string, number>();
     // Detective: most correct guesses across all rounds
     const correctCounts = new Map<string, number>();
-    // Social Butterfly: author whose answer got the most reactions
-    const reactionCounts = new Map<string, number>();
+    // Hype Person: player who sent the most reactions during the reveal
+    const reactionsSent = new Map<string, number>();
 
     for (const round of game.rounds) {
       for (const guess of round.guesses) {
@@ -86,9 +111,12 @@ export class GuessWhoGame implements GameType {
           );
         }
       }
-      reactionCounts.set(
-        round.authorId,
-        (reactionCounts.get(round.authorId) ?? 0) + round.reactions.length
+    }
+
+    for (const reaction of game.reactions) {
+      reactionsSent.set(
+        reaction.playerId,
+        (reactionsSent.get(reaction.playerId) ?? 0) + 1
       );
     }
 
@@ -118,13 +146,13 @@ export class GuessWhoGame implements GameType {
       }
     }
 
-    const topReactions = this.topEntry(reactionCounts);
+    const topReactions = this.topEntry(reactionsSent);
     if (topReactions && topReactions[1] > 0) {
       const player = playerMap.get(topReactions[0]);
       if (player) {
         awards.push({
-          title: "Social Butterfly",
-          description: `Got ${topReactions[1]} reaction${topReactions[1] !== 1 ? "s" : ""} on their answers`,
+          title: "Hype Person",
+          description: `Sent ${topReactions[1]} reaction${topReactions[1] !== 1 ? "s" : ""} during the reveal`,
           playerId: player.id,
           playerName: player.name,
         });
@@ -144,15 +172,16 @@ export class GuessWhoGame implements GameType {
     return top;
   }
 
-  private buildRoundView(round: Round): RoundView {
+  private buildRoundView(
+    round: Round,
+    opts: { exposeAuthor: boolean; exposeAnswer: boolean }
+  ): RoundView {
     return {
       index: round.index,
-      answer: round.answer,
-      authorId: round.revealed ? round.authorId : null,
-      guesses: round.guesses,
+      answer: opts.exposeAnswer ? round.answer : "",
+      authorId: opts.exposeAuthor ? round.authorId : null,
+      guesses: opts.exposeAuthor ? round.guesses : [],
       guessCount: round.guesses.length,
-      reactions: round.reactions as RoundView["reactions"],
-      revealed: round.revealed,
     };
   }
 }
