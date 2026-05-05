@@ -31,6 +31,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const isValidationError =
+      message.startsWith("Unknown game:") ||
+      message.endsWith("is not yet available");
+    return NextResponse.json(
+      { error: message },
+      { status: isValidationError ? 400 : 500 }
+    );
   }
 }
